@@ -468,8 +468,7 @@ dd = [
  "depends_on":["REVEAL_VP60VS70","REVEAL_VP90VS60"],
  "unit":"dimensionless", "v_range":(-0.25,0.14), "cmap":"cmc.roma",
  "sigma":0.002, "weight":1.0,
- "description":"Vp/Vs difference 40-50 vs 120-140 km",
- "note":"NOT in obs_list — diagnostics only."},
+ "description":"Vp/Vs difference 40-50 vs 120-140 km"},
 
 {"label":"VOLC_DIST", "import_type":"compute",
  "func":compute_volcano_distance,
