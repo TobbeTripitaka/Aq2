@@ -1,0 +1,4 @@
+configuration,CV R²
+"baseline (σ=1, K=7)",0.2933
+"best σ, K_fixed=7.0",0.337
+"best σ, best K=12.41",0.3417

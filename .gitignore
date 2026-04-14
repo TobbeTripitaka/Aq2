@@ -1,0 +1,91 @@
+# ============================================================
+# .gitignore — Aq2 / Kq2 project
+# Track: code, notebooks, sweep CSVs, small config/recipe files
+# Exclude: all data, large netCDF products, secrets..., caches
+# ============================================================
+
+todo.txt
+
+# ── Python environment ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+*.dylib
+.env
+.venv
+venv/
+env/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+*.nbconvert.py
+nbconvert_output/
+
+# ── Data (raw input datasets stored outside repo) ──────────────────────
+data/
+/data/
+../data/
+
+# ── Large output products (not tracked for now) ────────────────────
+output/*.nc
+output/*.nc4
+output/*.h5
+output/*.hdf5
+output/*.zarr/
+
+output/targets/*.nc
+output/targets/*.h5
+output/targets/*.zarr
+
+
+# ── Figures (regenerated add later) ──────────
+fig/
+*.png
+*.pdf
+*.svg
+*.eps
+
+# ── Temp and log files ────────────────────────────────────────────────────
+temp/
+logs/
+*.log
+*.tmp
+
+# ── Model artefacts ───────────────────────────────────────────────────────
+*.joblib
+*.pkl
+*.pickle
+*.pt
+*.pth
+
+# ── OS and editor noise ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cache/
+
+# ── Top Secrets ───────────────────────────────────────────────────────────────
+.env
+*.key
+*.pem
+secrets.py
+credentials.py
+excluded/
+
+# ── Sweep CSV output — DO track (small, reproducibility record) ──────────
+# (explicitly un-ignore sweep CSVs so they are tracked)
+!output/param_sweep/*.csv
+!output/depth_sweep/*.csv
+!output/feature_sweep/*.csv
