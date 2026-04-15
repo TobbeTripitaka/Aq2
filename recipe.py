@@ -319,7 +319,6 @@ dd = [
    "unit":"km/s", "v_range":vr, "cmap":"cmc.roma",
    "description":f"Vsv at {depth} km (REVEAL)"}
   for depth,vr in [
-      (50,  (3.8, 4.8)),
       (60,  (3.8, 4.8)),
       (80,  (3.9, 4.8)), 
       (70,  (3.9, 4.7)),   # best S-wave depth by univariate CV R²
@@ -340,13 +339,11 @@ dd = [
    "unit":"km/s", "v_range":vr, "cmap":"cmc.roma",
    "description":f"Vpv at {depth} km (REVEAL)"}
   for depth,vr in [
-      (40,   (7.3, 8.5)),
       (60,  (7.8, 8.8)),
       (90,  (7.8, 8.8)),
       (120, (7.8, 8.5)),
       (150, (7.8, 8.5)),   # least-negative P-wave R²
       (180, (7.8, 8.5)),   # second least-negative        
-      (210, (7.8, 8.4)),
   ]],
 
 # ── Densities ──────────────────────────────────────────────────────

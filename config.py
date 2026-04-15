@@ -170,15 +170,8 @@ obs_sweep = obs_model + [
     "REVEAL_P90",
     "REVEAL_P120",
     "REVEAL_P210",
-]
-# obs_sweep = obs_model + extras, deduplicated, order preserved
-_sweep_extras = [
-    "REVEAL_S50", "REVEAL_S100", "REVEAL_S140", "REVEAL_S200", "REVEAL_S220",
-    "REVEAL_P40",  "REVEAL_P60",  "REVEAL_P90",  "REVEAL_P120", "REVEAL_P210",
-    "MOHO_GRAV", "MOHO_GRAV_U", "MOHO_U",
-]
-_seen = set(obs_model)
-obs_sweep = obs_model + [x for x in _sweep_extras if x not in _seen]
+]   
+obs_sweep = list(set(obs_sweep))
 
 # ── obs : full parquet catalogue ──────────────────────────────────────────────
 
