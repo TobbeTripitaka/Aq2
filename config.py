@@ -136,40 +136,29 @@ obs_model = [
     "SI",                 # GOCE scalar invariant
     "GEOID",              # Geoid height (EIGEN-6C4)
     # -- Seismic — S-wave (top 2 by univariate CV R² from depth sweep)
-    "REVEAL_S80",         # Vsv at  80 km  R²=+0.038
-    "REVEAL_S90",         # Vsv at  90 km  R²=+0.014
+    'REVEAL_S80',  # CV R²=0.0379
+    'REVEAL_S90',  # CV R²=0.0143
+    'REVEAL_S70',  # CV R²=0.0090
+    'REVEAL_S100',  # CV R²=0.0056
     # -- Seismic — P-wave (wave-type diversity; least-negative R²)
-    "REVEAL_P180",        # Vpv at 180 km  R²=−0.038
-    "REVEAL_P150",        # Vpv at 150 km  R²=−0.056
     # -- Seismic — Vp/Vs cross-depth ratios
-    "REVEAL_VP60VS70",    # Vp@60 / Vs@70  R²=+0.019
-    "REVEAL_VP90VS60",    # Vp@90 / Vs@60  R²=+0.012
+    'REVEAL_VP60VS70',  # CV R²=0.0193
+    'REVEAL_VP90VS60',  # CV R²=0.0121
+    'REVEAL_VP50VS80',  # CV R²=0.0022
     # -- Density
     "LITH_RHO",
     "CRUST_RHO",
     # -- Derived / composite
     "MAG_SEIS_MOHO",      # Seismic Moho − Curie depth
     "SEDIMENT",
-    "REVEAL_S_DIFF_200_220",   # S-wave velocity gradient 200–220 km
-    "REVEAL_P_DIFF_40_60",     # P-wave velocity gradient  40– 60 km
     "CTD",                # Curie temperature depth
     "EMAG2_LOG",          # EMAG2 magnetic anomaly (log-scaled)
-    "REVEAL_VPVS_DIFF",   # VP60VS70 − VP90VS60 (crustal vs mantle Vp/Vs contrast)
 ]
 
 # ── obs_sweep : all sweep candidates (obs_model + extras worth testing) ────────
 obs_sweep = obs_model + [
     # Additional REVEAL depths not in obs_model but worth sweeping
-    "REVEAL_S50",
-    "REVEAL_S100",
-    "REVEAL_S140",
-    "REVEAL_S200",
-    "REVEAL_S220",
-    "REVEAL_P40",
-    "REVEAL_P60",
-    "REVEAL_P90",
-    "REVEAL_P120",
-    "REVEAL_P210",
+    "REVEAL_P150",        # Vpv at 150 km  R²=−0.056
 ]   
 obs_sweep = list(set(obs_sweep))
 

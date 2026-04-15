@@ -326,7 +326,6 @@ dd = [
       (100,  (4.0, 4.7)),
       (140,  (4.1, 4.8)),
       (200,  (4.1, 4.8)),
-      (220,  (4.0, 4.7)),
   ]],
 
 # ── P-wave velocity slices (REVEAL) ───────────────────────────────
@@ -339,11 +338,10 @@ dd = [
    "unit":"km/s", "v_range":vr, "cmap":"cmc.roma",
    "description":f"Vpv at {depth} km (REVEAL)"}
   for depth,vr in [
+      (50,  (7.8, 8.8)),
       (60,  (7.8, 8.8)),
       (90,  (7.8, 8.8)),
-      (120, (7.8, 8.5)),
-      (150, (7.8, 8.5)),   # least-negative P-wave R²
-      (180, (7.8, 8.5)),   # second least-negative        
+      (150, (7.8, 8.5)),   # least-negative P-wave R²   
   ]],
 
 # ── Densities ──────────────────────────────────────────────────────
@@ -432,20 +430,6 @@ dd = [
  "description":"Seismic Moho minus Curie depth"},
 
 
-{"label":"REVEAL_S_DIFF_200_220", "import_type":"compute",
- "func": lambda s,d: s.df["REVEAL_S220"].values - s.df["REVEAL_S200"].values,
- "depends_on":["REVEAL_S220","REVEAL_S200"],
- "unit":"km/s", "v_range":(-0.16,0.034), "cmap":"cmc.roma",
- "sigma":0.002, "weight":1.0,
- "description":"S-wave gradient 200-220 km"},
-
-{"label":"REVEAL_P_DIFF_40_60", "import_type":"compute",
- "func": lambda s,d: s.df["REVEAL_P60"].values - s.df["REVEAL_P40"].values,
- "depends_on":["REVEAL_P60","REVEAL_P40"],
- "unit":"km/s", "v_range":(-0.047,1.0), "cmap":"cmc.roma",
- "sigma":0.002, "weight":1.0,
- "description":"P-wave gradient 60-40 km"},
-
 {"label":"REVEAL_VP60VS70", "import_type":"compute",
  "func": lambda s,d: np.where(s.df["REVEAL_S70"].values==0, np.nan,
                                s.df["REVEAL_P60"].values/s.df["REVEAL_S70"].values),
@@ -460,12 +444,17 @@ dd = [
  "unit":"dimensionless", "v_range":(1.7,2.0), "cmap":"cmc.batlow",
  "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 120-140 km"},
 
-{"label":"REVEAL_VPVS_DIFF", "import_type":"compute",
- "func": lambda s,d: s.df["REVEAL_VP60VS70"].values - s.df["REVEAL_VP90VS60"].values,
- "depends_on":["REVEAL_VP60VS70","REVEAL_VP90VS60"],
- "unit":"dimensionless", "v_range":(-0.25,0.14), "cmap":"cmc.roma",
- "sigma":0.002, "weight":1.0,
- "description":"Vp/Vs difference 40-50 vs 120-140 km"},
+
+
+{"label":"REVEAL_VP50VS80", "import_type":"compute",
+ "func": lambda s,d: np.where(s.df["REVEAL_S80"].values==0, np.nan,
+                               s.df["REVEAL_P50"].values/s.df["REVEAL_S80"].values),
+ "depends_on":["REVEAL_P50","REVEAL_S80"],
+ "unit":"dimensionless", "v_range":(1.7,2.0), "cmap":"cmc.batlow",
+ "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 120-140 km"},
+
+
+
 
 {"label":"VOLC_DIST", "import_type":"compute",
  "func":compute_volcano_distance,
