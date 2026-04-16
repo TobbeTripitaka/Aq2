@@ -350,7 +350,7 @@ dd = [
  "import_type":"read_ascii", "delim_whitespace":True,
  "usecols":[0,1,6], "names":["lon","lat","density"], "header":10,
  "x_preproc": lambda x: np.where(x>180, x-360, x), "interpol_method":"linear",
- "unit":"kg/m3", "v_range":(3_200,3_400), "cmap":"cmc.batlow",
+ "unit":"kg/m3", "v_range":(3_200,3_400), "cmap":"cmc.batlow_r",
  "sigma":40, "weight":1.0, "reference":"Afonso2019",
  "description":"Lithospheric mantle density (LithoRef18)"},
 
@@ -359,7 +359,7 @@ dd = [
  "import_type":"read_ascii", "delim_whitespace":True,
  "usecols":[0,1,5], "names":["lon","lat","density"], "header":10,
  "x_preproc": lambda x: np.where(x>180, x-360, x), "interpol_method":"linear",
- "unit":"kg/m3", "v_range":(2_600,3_000), "cmap":"cmc.batlow",
+ "unit":"kg/m3", "v_range":(2_600,3_000), "cmap":"cmc.batlow_r",
  "sigma":100, "weight":1.0, "reference":"Afonso2019",
  "description":"Crustal density (LithoRef18)"},
 
