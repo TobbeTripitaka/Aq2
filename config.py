@@ -1,18 +1,5 @@
 # =============================================================================
-# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v4.0)
-# =============================================================================
-# Single source of truth for:
-#   - All file / directory paths
-#   - obs_model  : 22 features used by ALL prediction models
-#   - obs_sweep  : superset for sweeps (obs_model + extras)
-#   - obs        : full parquet catalogue reference
-#   - q thresholds, grid parameters, model defaults, plotting constants
-#
-# Rules:
-#   1.  obs_model  is imported by EVERY notebook.  Never redefined locally.
-#   2.  JSONs in output/sweeps/  carry hyperparameters ONLY (no feature lists).
-#   3.  q_clip_max is defined here and nowhere else.
-#   4.  model_paths / param_paths give every notebook the same file handles.
+# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v4.1)
 # =============================================================================
 
 from pathlib import Path
