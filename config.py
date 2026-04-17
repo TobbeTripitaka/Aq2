@@ -115,9 +115,9 @@ obs_model = [
     "MOHO", "MOHO_GRAV", "DEM", "LAB",
     "FREE_AIR", "BOUGUER", "SI", "GEOID",
     "REVEAL_S80", "REVEAL_S90", "REVEAL_S70", "REVEAL_S100",
-    "REVEAL_VP_60_VS_70", "REVEAL_VP_90_VS_60", "REVEAL_VP_50_VS_80",
+    "REVEAL_VP60VS70", "REVEAL_VP90VS60", "REVEAL_VP50VS80",
     "LITH_RHO", "CRUST_RHO", "MAG_SEIS_MOHO",
-    "SEDIMENT", "CTD", "EMAG2LOG",
+    "SEDIMENT", "CTD", "EMAG2_LOG",
 ]
 
 # ── obs_sweep : all sweep candidates (obs_model + extras worth testing) ────────
