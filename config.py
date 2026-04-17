@@ -112,34 +112,12 @@ ref_clustering_radius_km = (grid_spacing_m_ant / 1000) / np.sqrt(np.pi)
 
 # ── obs_model : 22 modelling features ─────────────────────────────────────────
 obs_model = [
-    # -- Crustal structure
-    "MOHO",               # Moho depth, seismic — Szwillus 2019
-    "MOHO_GRAV",          # Gravity-derived Moho (GEMMA) 
-    "DEM",                # Corrected bed topography
-    "LAB",                # Lithosphere–asthenosphere boundary — Afonso 2019
-    # -- Gravity & geoid
-    "FREE_AIR",           # Free-air gravity anomaly
-    "BOUGUER",            # Bouguer gravity anomaly
-    "SI",                 # GOCE scalar invariant
-    "GEOID",              # Geoid height (EIGEN-6C4)
-    # -- Seismic — S-wave (top 2 by univariate CV R² from depth sweep)
-    'REVEAL_S80',  # CV R²=0.0379
-    'REVEAL_S90',  # CV R²=0.0143
-    'REVEAL_S70',  # CV R²=0.0090
-    'REVEAL_S100',  # CV R²=0.0056
-    # -- Seismic — P-wave (wave-type diversity; least-negative R²)
-    # -- Seismic — Vp/Vs cross-depth ratios
-    'REVEAL_VP60VS70',  # CV R²=0.0193
-    'REVEAL_VP90VS60',  # CV R²=0.0121
-    'REVEAL_VP50VS80',  # CV R²=0.0022
-    # -- Density
-    "LITH_RHO",
-    "CRUST_RHO",
-    # -- Derived / composite
-    "MAG_SEIS_MOHO",      # Seismic Moho − Curie depth
-    "SEDIMENT",
-    "CTD",                # Curie temperature depth
-    "EMAG2_LOG",          # EMAG2 magnetic anomaly (log-scaled)
+    "MOHO", "MOHO_GRAV", "DEM", "LAB",
+    "FREE_AIR", "BOUGUER", "SI", "GEOID",
+    "REVEAL_S80", "REVEAL_S90", "REVEAL_S70", "REVEAL_S100",
+    "REVEAL_VP_60_VS_70", "REVEAL_VP_90_VS_60", "REVEAL_VP_50_VS_80",
+    "LITH_RHO", "CRUST_RHO", "MAG_SEIS_MOHO",
+    "SEDIMENT", "CTD", "EMAG2LOG",
 ]
 
 # ── obs_sweep : all sweep candidates (obs_model + extras worth testing) ────────

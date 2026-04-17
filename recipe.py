@@ -320,8 +320,8 @@ dd = [
    "description":f"Vsv at {depth} km (REVEAL)"}
   for depth,vr in [
       (60,  (3.8, 4.8)),
-      (80,  (3.9, 4.8)), 
       (70,  (3.9, 4.7)),   # best S-wave depth by univariate CV R²
+      (80,  (3.9, 4.8)), 
       (90,  (3.9, 4.7)),   # second best
       (100,  (4.0, 4.7)),
       (140,  (4.1, 4.8)),
@@ -409,8 +409,6 @@ dd = [
  "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
  "description":"Sediment thickness from gravity (GST1)",
  "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175)"},
-
-
 
 {"label":"SEDIMENT_LIKELIHOOD", "grid":"Antarctica",
  "filepath_or_buffer":"../data/li_2022/SSB_Likelihood.tif",
