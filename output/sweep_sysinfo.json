@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-04-17T19:38:13.335634",
+  "hostname": "5c-e9-1e-81-a2-df-dyn.staff.utas.edu.au",
+  "os": "macOS-14.5-arm64-arm-64bit",
+  "python": "3.12.7",
+  "cpu_model": "arm",
+  "cpu_physical": 12,
+  "cpu_logical": 12,
+  "ram_gb_total": 34.4,
+  "ram_gb_avail": 13.5,
+  "param_n_runs": 200,
+  "mc_n_runs": 300,
+  "n_optuna_trials": 200,
+  "gpu": "none / not detected"
+}

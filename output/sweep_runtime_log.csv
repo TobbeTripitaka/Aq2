@@ -1,0 +1,7 @@
+stage,wall_s,wall_min
+param_sweep,9936.198210000992,165.6
+feature_ablation_loo,2373.4486660957336,39.56
+mc_subset_sweep,3673.3277628421783,61.22
+greedy_forward,29135.10424208641,485.59
+sim_sigma_optuna,32663.45634007454,544.39
+sim_k_sweep,8289.63914513588,138.16
