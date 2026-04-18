@@ -260,5 +260,3 @@ if VERBOSE:
         f"obs_sweep: {len(obs_sweep)} | "
         f"obs: {len(obs)}"
     )
-
-SIM_BATCH_SIZE = 1000

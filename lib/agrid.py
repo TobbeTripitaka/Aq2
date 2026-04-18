@@ -643,7 +643,7 @@ class Grid:
         return None, None
 
     def _apply_gridlines(self, ax, gl_dict, gl_kw, ccrs, use_xy, 
-                         gridlabels = [False]):
+                         gridlabels = [False, False, False, False]):
         import matplotlib.ticker as mticker
         kw = {"linewidth": 0.4, "alpha": 0.5, "color": "gray", "linestyle": "-"}
         if gl_kw: kw.update(gl_kw)
