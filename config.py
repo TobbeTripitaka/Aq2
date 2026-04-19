@@ -1,11 +1,14 @@
 # =============================================================================
-# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v4.1)
+# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v0.2)
 # =============================================================================
 
 from pathlib import Path
 import numpy as np
 import sys; sys.path.insert(0, str(Path('.').resolve()))
 from recipe import dd
+
+
+MODEL_VERSION = '0_2'
 
 VERBOSE = True
 
@@ -47,12 +50,14 @@ grl_Kq2_qrf_nc  = output_root / "grl_Kq2_qrf.nc"
 grl_Kq2_gb_nc   = output_root / "grl_Kq2_gb.nc"
 grl_Kq2_sim_nc  = output_root / "grl_Kq2_sim.nc"
 
-# ── Model artefact paths (written by 4_MODEL) ─────────────────────────────────
+# ── Model artefact paths (written by 4x_) ─────────────────────────────────
 model_paths = {
-    "qrf"            : model_dir / "qrf_model.pkl",
-    "gbm_q05"        : model_dir / "gbm_q05_model.pkl",
-    "gbm_q50"        : model_dir / "gbm_q50_model.pkl",
-    "gbm_q95"        : model_dir / "gbm_q95_model.pkl",
+    'qrf'        : model_dir / 'qrf_artefacts.pkl',
+    'gbm_q05'    : model_dir / 'gbm_q05_model.pkl',
+    'gbm_q25'    : model_dir / 'gbm_q25_model.pkl',  
+    'gbm_q50'    : model_dir / 'gbm_q50_model.pkl',
+    'gbm_q75'    : model_dir / 'gbm_q75_model.pkl', 
+    'gbm_q95'    : model_dir / 'gbm_q95_model.pkl',
     "sim_correction" : model_dir / "sim_correction_spline.pkl",
     "model_metrics"  : model_dir / "model_metrics.csv",
 }
