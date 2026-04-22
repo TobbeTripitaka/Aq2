@@ -1112,3 +1112,473 @@ class Grid:
                          bbox_inches="tight", pad_inches=0)
         if show: plt.show()
         else: plt.close(cfig)
+
+
+    # ------------------------------------------------------------------
+    # _smooth_data  (internal helper)
+    # ------------------------------------------------------------------
+    def _smooth_data(self, data_2d, kernel_size=3, kernel_type="gaussian"):
+        """Apply 2D smoothing to a 2D array, NaN-aware.
+
+        Parameters
+        ----------
+        data_2d     : 2D ndarray (may contain NaN)
+        kernel_size : int or float
+            For "gaussian": sigma value (std-dev in grid cells).
+            For "uniform"  (boxcar): filter window width in grid cells.
+        kernel_type : {"gaussian", "uniform"}
+
+        Returns
+        -------
+        smoothed 2D ndarray (same shape, NaN mask preserved)
+        """
+        from scipy.ndimage import gaussian_filter, uniform_filter
+
+        has_nan = np.any(np.isnan(data_2d))
+
+        if has_nan:
+            # NaN-aware normalised convolution: smooth(vals) / smooth(weights)
+            nan_mask = np.isnan(data_2d)
+            filled   = np.where(nan_mask, 0.0, data_2d)
+            weights  = np.where(nan_mask, 0.0, 1.0)
+
+            if kernel_type == "gaussian":
+                smooth_fn = lambda a: gaussian_filter(
+                    a, sigma=float(kernel_size), mode="nearest")
+            else:
+                smooth_fn = lambda a: uniform_filter(
+                    a, size=int(kernel_size), mode="nearest")
+
+            num            = smooth_fn(filled)
+            den            = smooth_fn(weights)
+            den[den == 0]  = np.nan
+            result         = num / den
+            result[nan_mask] = np.nan
+        else:
+            if kernel_type == "gaussian":
+                result = gaussian_filter(data_2d, sigma=float(kernel_size),
+                                         mode="nearest")
+            else:
+                result = uniform_filter(data_2d, size=int(kernel_size),
+                                        mode="nearest")
+        return result
+
+    # ------------------------------------------------------------------
+    # contour_map  (production contour cartographic visualisation)
+    # ------------------------------------------------------------------
+    def contour_map(self, data=None, ax=None, map_crs=None,
+                    # ---- filled contours ----------------------------------------
+                    cmap="viridis", vmin=None, vmax=None,
+                    n_contour_fills=10,
+                    # ---- line contours ------------------------------------------
+                    n_contours=10,
+                    contour_colors="k",
+                    contour_linewidths=0.6,
+                    contour_linestyles="solid",
+                    contour_levels=None,
+                    # ---- contour labels -----------------------------------------
+                    contour_labels=False,
+                    contour_label_fmt="%.4g",
+                    contour_label_fontsize=8,
+                    contour_label_inline=True,
+                    contour_label_colors=None,
+                    # ---- smoothing ----------------------------------------------
+                    smooth=False,
+                    smooth_kernel_size=2,
+                    smooth_kernel_type="gaussian",
+                    # ---- colorbar -----------------------------------------------
+                    cbar=False,
+                    cbar_title="",
+                    cbar_units_label=None,
+                    cbar_title_rotation=0,
+                    cbar_orientation="horizontal",
+                    ext_cbar=False,
+                    save_cbar=None,
+                    cbar_ratio=0.1,
+                    cbarsize=None,
+                    no_frame_cbar=True,
+                    histogram=True,
+                    hist_dict=None,
+                    # ---- map features -------------------------------------------
+                    title="",
+                    coastlines=True,
+                    continents=False,
+                    gridlines=None,
+                    gridlines_kwargs=None,
+                    gridlabels=[False, False, False, False],
+                    vector_file=None,
+                    vector_kwargs=None,
+                    vector_crs=None,
+                    # ---- figure -------------------------------------------------
+                    figsize=None,
+                    extent=None,
+                    dpi=300,
+                    no_frame=True,
+                    transparent=True,
+                    show=True,
+                    return_fig=False,
+                    save_fig=None,
+                    **kw):
+        """Production cartographic contour visualisation.
+
+        Draws filled contours (contourf) and/or line contours (contour)
+        over a Cartopy basemap.  Mirrors the signature of ``map()`` and adds
+        dedicated contour controls, optional smoothing, and contour labelling.
+
+        Parameters
+        ----------
+        data : None | str | 1-D/2-D ndarray
+            Data to visualise.  Passed through ``_user_to_array``.
+            Pass ``None`` for a basemap-only plot.
+        ax : GeoAxes, optional
+            Existing Cartopy axes to draw into.  If None a new figure is
+            created.
+        map_crs : Cartopy CRS or int EPSG, optional
+            Projection for the map axes.
+
+        Filled contours
+        ---------------
+        cmap : str or Colormap
+            Colormap for ``contourf``.
+        vmin, vmax : float, optional
+            Colour-scale limits.  Defaults to the 2nd / 98th percentile.
+        n_contour_fills : int
+            Number of filled contour bands (levels = n + 1 edges).
+            Set to 0 to suppress filled contours.
+
+        Line contours
+        -------------
+        n_contours : int
+            Number of line contour levels.  Set to 0 to suppress.
+        contour_colors : color spec
+            Colour(s) for line contours (e.g. "k", ["k","grey"]).
+        contour_linewidths : float or list of float
+            Line width(s).
+        contour_linestyles : str or list of str
+            Line style(s), e.g. "solid", "dashed", "dotted".
+        contour_levels : array-like, optional
+            Explicit level values.  Overrides ``n_contours`` /
+            ``n_contour_fills`` when given.
+
+        Contour labels
+        --------------
+        contour_labels : bool
+            Annotate line contours with their values.
+        contour_label_fmt : str or callable
+            Format for contour labels.  Accepts:
+            - %-format string: ``"%.1f"``, ``"%.0f"``
+            - new-style callable: ``"{:.2f}".format``
+            - any callable ``f(float) -> str``
+        contour_label_fontsize : int
+            Font size for labels.
+        contour_label_inline : bool
+            Remove the line segment under each label when True.
+        contour_label_colors : color spec, optional
+            Label colour(s).  Defaults to matching contour line colours.
+
+        Smoothing
+        ---------
+        smooth : bool
+            Apply spatial smoothing to the data array before contouring.
+        smooth_kernel_size : int or float
+            Kernel size / spread:
+            - "gaussian" → sigma (standard deviation in grid cells)
+            - "uniform"  → window width in grid cells
+        smooth_kernel_type : {"gaussian", "uniform"}
+            Type of smoothing kernel.  Both are NaN-aware.
+
+        Colorbar
+        --------
+        cbar : bool
+            Draw an inline colorbar on the map axes.
+        cbar_title : str
+            Main colorbar label.
+        cbar_units_label : str, optional
+            Units string appended to ``cbar_title``.
+        cbar_title_rotation : float
+            Rotation of the colorbar label in degrees.
+        cbar_orientation : {"horizontal", "vertical"}
+        ext_cbar : bool
+            Generate a separate colourbar figure (delegates to
+            ``_make_ext_cbar``).
+        save_cbar : str, optional
+            File path to save the external colorbar figure.
+        cbar_ratio, cbarsize, no_frame_cbar, histogram, hist_dict
+            Passed directly to ``_make_ext_cbar``.
+
+        Map features
+        ------------
+        title : str
+            Axes title.
+        coastlines : bool
+            Draw Cartopy coastlines.
+        continents : bool
+            Fill land with light grey.
+        gridlines : bool or dict, optional
+            Draw map gridlines.
+        gridlabels : list of 4 bool
+            [left, right, top, bottom] gridline label sides.
+        vector_file : str, optional
+            Path to a vector file (Shapefile / GeoJSON) to overlay.
+        vector_kwargs : dict, optional
+            Style overrides for the vector overlay.
+        vector_crs : Cartopy CRS, optional
+            CRS of the vector file (used if the file has no embedded CRS).
+
+        Figure
+        ------
+        figsize : tuple (w, h) in inches
+        extent : [lon_min, lon_max, lat_min, lat_max]
+        dpi : int
+        no_frame : bool
+            Hide the geo-spine frame.
+        transparent : bool
+            Transparent figure background.
+        show : bool
+        save_fig : str, optional
+            File path to save the figure.
+
+        Returns
+        -------
+        fig : Figure
+        ax  : GeoAxes
+        """
+        ccrs, cfeat, plt, mpath, mticker, cmc = self._plotting_imports()
+        t0 = time.time()
+
+        # ── 1. Resolve figure / axes ──────────────────────────────────────────
+        own_fig = ax is None
+        if own_fig:
+            map_crs_obj = (
+                ccrs.Mollweide()
+                if (map_crs is None and getattr(self, "crs", 4326) == 4326)
+                else self._resolve_map_crs(map_crs)
+            )
+        else:
+            map_crs_obj = ax.projection
+            fig = ax.figure
+
+        use_xy = "x" in self.df.columns and "y" in self.df.columns
+
+        # ── 2. Determine regularity / reshape tuple ───────────────────────────
+        is_reg = self.reshape_tuple is not None
+        if not is_reg:
+            try:
+                self._infer_regular_shape()
+                is_reg = True
+            except ValueError:
+                pass
+        if not is_reg and hasattr(self, "nn") and isinstance(self.nn, tuple):
+            self.reshape_tuple = self.nn
+            is_reg = True
+
+        # ── 3. Figure creation ────────────────────────────────────────────────
+        if own_fig:
+            if figsize is None:
+                ext_ = extent or self.extent
+                if ext_:
+                    ar = (ext_[1] - ext_[0]) / max(ext_[3] - ext_[2], 1e-9)
+                elif use_xy:
+                    ar = (self.df["x"].max() - self.df["x"].min()) / max(
+                        self.df["y"].max() - self.df["y"].min(), 1e-9)
+                else:
+                    ar = (self.lons.max() - self.lons.min()) / max(
+                        self.lats.max() - self.lats.min(), 1e-9)
+                figsize = (5 * ar, 5) if ar >= 1 else (5, 5 / ar)
+            fig = plt.figure(figsize=figsize)
+            ax  = fig.add_subplot(1, 1, 1, projection=map_crs_obj)
+            if transparent:
+                fig.patch.set_alpha(0)
+                fig.patch.set_facecolor("none")
+                ax.patch.set_alpha(0)
+            if no_frame and hasattr(ax, "spines") and "geo" in ax.spines:
+                ax.spines["geo"].set_edgecolor("none")
+
+        # ── 4. Extent + basemap features ─────────────────────────────────────
+        ext, ecrs = self._resolve_extent(extent, map_crs, map_crs_obj,
+                                         use_xy, ccrs)
+        if ext is not None:
+            ax.set_extent(ext, crs=ecrs)
+        if coastlines:
+            ax.coastlines()
+        if continents:
+            ax.add_feature(cfeat.LAND, facecolor="lightgray")
+        if gridlines:
+            self._apply_gridlines(ax, gridlines, gridlines_kwargs,
+                                  ccrs, use_xy, gridlabels=gridlabels)
+
+        # ── 5. Optional vector overlay ────────────────────────────────────────
+        if vector_file:
+            try:
+                gdf = gpd.read_file(vector_file)
+                if gdf.crs is None:
+                    gdf = gdf.set_crs(vector_crs or self.crs)
+                vec_kw = {"edgecolor": "black", "facecolor": "none",
+                          "linewidth": 0.5}
+                if vector_kwargs:
+                    vec_kw.update(vector_kwargs)
+                gdf.plot(ax=ax, **vec_kw)
+            except Exception as e:
+                self._log(f"Vector overlay failed: {e}", level="warn")
+
+        # ── 6. Early exit: basemap only ───────────────────────────────────────
+        if data is None:
+            if own_fig:
+                plt.tight_layout()
+                if save_fig:
+                    import os
+                    os.makedirs(os.path.dirname(save_fig) or ".", exist_ok=True)
+                    fig.savefig(save_fig, dpi=dpi, transparent=transparent,
+                                bbox_inches="tight", pad_inches=0)
+                if show:
+                    plt.show()
+                else:
+                    plt.close(fig)
+            if self.verbose:
+                self._log(f"contour_map() basemap [{time.time()-t0:.2f}s]")
+            return fig, ax
+
+        # ── 7. Prepare data array ─────────────────────────────────────────────
+        plot_data  = self._user_to_array(data)
+        valid_data = plot_data[~np.isnan(plot_data)]
+
+        if len(valid_data) == 0:
+            _vn = vmin if vmin is not None else 0
+            _vx = vmax if vmax is not None else 1
+        else:
+            _vn = vmin if vmin is not None else float(np.percentile(valid_data, 2))
+            _vx = vmax if vmax is not None else float(np.percentile(valid_data, 98))
+
+        # ── 8. Build 2-D coordinate arrays and grid ───────────────────────────
+        if isinstance(data, np.ndarray) and data.ndim == 2:
+            pd_ = data
+            xs  = np.sort(self.df["x" if use_xy else "lon"].unique())
+            ys  = np.sort(self.df["y" if use_xy else "lat"].unique())
+            X2, Y2 = np.meshgrid(xs, ys)
+        elif is_reg:
+            pd_ = (plot_data.reshape(*self.reshape_tuple)
+                   if plot_data.ndim == 1 else plot_data)
+            ny, nx = self.reshape_tuple
+            col_x  = "x" if use_xy else "lon"
+            col_y  = "y" if use_xy else "lat"
+            X2 = self.df[col_x].values.reshape(ny, nx)
+            Y2 = self.df[col_y].values.reshape(ny, nx)
+        else:
+            self._log(
+                "contour_map() requires a regular grid; "
+                "irregular scatter data is not supported for contouring.",
+                level="warn",
+            )
+            return fig, ax
+
+        # ── 9. Optional smoothing ─────────────────────────────────────────────
+        if smooth:
+            pd_ = self._smooth_data(pd_,
+                                    kernel_size=smooth_kernel_size,
+                                    kernel_type=smooth_kernel_type)
+
+        # ── 10. Build level arrays ─────────────────────────────────────────────
+        if contour_levels is not None:
+            levels_fill = np.asarray(contour_levels)
+            levels_line = levels_fill
+        else:
+            levels_fill = np.linspace(_vn, _vx, max(int(n_contour_fills) + 1, 2))
+            levels_line = np.linspace(_vn, _vx, max(int(n_contours) + 1, 2))
+
+        # ── 11. CRS transform for data ────────────────────────────────────────
+        # lon/lat data always needs PlateCarree transform;
+        # projected XY data should use the map CRS itself.
+        transform = ccrs.PlateCarree() if not use_xy else map_crs_obj
+
+        # ── 12. Filled contours ───────────────────────────────────────────────
+        im_cf = None
+        if n_contour_fills > 0 or contour_levels is not None:
+            cf_kw = dict(
+                cmap=cmap,
+                vmin=_vn,
+                vmax=_vx,
+                levels=levels_fill,
+                zorder=2,
+            )
+            # Allow caller to pass extend / alpha via **kw
+            for _k in ("alpha", "extend"):
+                if _k in kw:
+                    cf_kw[_k] = kw[_k]
+            im_cf = ax.contourf(X2, Y2, pd_, transform=transform, **cf_kw)
+
+        # ── 13. Line contours ─────────────────────────────────────────────────
+        cs = None
+        if n_contours > 0 or contour_levels is not None:
+            cs = ax.contour(
+                X2, Y2, pd_,
+                transform=transform,
+                levels=levels_line,
+                colors=contour_colors,
+                linewidths=contour_linewidths,
+                linestyles=contour_linestyles,
+                zorder=3,
+            )
+
+        # ── 14. Contour labels ────────────────────────────────────────────────
+        if contour_labels and cs is not None:
+            clabel_kw = dict(
+                fontsize=contour_label_fontsize,
+                inline=contour_label_inline,
+                fmt=contour_label_fmt,
+            )
+            if contour_label_colors is not None:
+                clabel_kw["colors"] = contour_label_colors
+            ax.clabel(cs, cs.levels, **clabel_kw)
+
+        # ── 15. Title ─────────────────────────────────────────────────────────
+        if title:
+            ax.set_title(title, fontsize=14, fontweight="bold")
+
+        # ── 16. Inline colorbar ───────────────────────────────────────────────
+        if cbar and im_cf is not None:
+            lbl = cbar_title or ""
+            if cbar_units_label:
+                lbl = f"{lbl} {cbar_units_label}".strip()
+            plt.colorbar(im_cf, ax=ax, orientation=cbar_orientation,
+                         pad=0.02).set_label(lbl, rotation=cbar_title_rotation)
+
+        # ── 17. Save / show / external colorbar ──────────────────────────────
+        if own_fig:
+            plt.tight_layout()
+            if save_fig:
+                import os
+                os.makedirs(os.path.dirname(save_fig) or ".", exist_ok=True)
+                fig.savefig(save_fig, dpi=dpi, transparent=transparent,
+                            bbox_inches="tight", pad_inches=0)
+            if ext_cbar and im_cf is not None:
+                self._make_ext_cbar(
+                    im=im_cf,
+                    plot_data=plot_data,
+                    valid_data=valid_data,
+                    all_nan=(data is None),
+                    cmap=cmap,
+                    vmin=_vn,
+                    vmax=_vx,
+                    cbar_title=cbar_title,
+                    cbar_units_label=cbar_units_label,
+                    cbar_title_rotation=cbar_title_rotation,
+                    cbar_orientation=cbar_orientation,
+                    cbar_ratio=cbar_ratio,
+                    figsize=figsize,
+                    cbarsize=cbarsize,
+                    no_frame_cbar=no_frame_cbar,
+                    histogram=histogram,
+                    hist_dict=hist_dict,
+                    transparent=transparent,
+                    dpi=dpi,
+                    save_cbar=save_cbar,
+                    show=show,
+                )
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
+
+        if self.verbose:
+            self._log(f"contour_map() [{time.time()-t0:.2f}s]")
+        return fig, ax
