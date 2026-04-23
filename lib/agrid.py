@@ -1400,7 +1400,7 @@ class Grid:
         if ext is not None:
             ax.set_extent(ext, crs=ecrs)
         if coastlines:
-            ax.coastlines()
+            ax.coastlines(zorder = 10)
         if continents:
             ax.add_feature(cfeat.LAND, facecolor="lightgray")
         if gridlines:
