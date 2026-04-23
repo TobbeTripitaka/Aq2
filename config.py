@@ -82,18 +82,24 @@ grl_grid_extent_m  = 910_000
 
 # ── Target grid definitions (used by 5_TARGETS) ───────────────────────────────
 TARGET_GRIDS = [
-    dict(label="ant", parquet=parquet_ant, crs=ant_crs, epsg=3031,
+    dict(label="ant", parquet=parquet_ant, 
+         crs=ant_crs, epsg=3031,
          x_col="x", y_col="y",
-         out_nc_qrf=ant_Aq2_qrf_nc, out_nc_gb=ant_Aq2_gb_nc, out_nc_sim=ant_Aq2_sim_nc),
-    dict(label="grl", parquet=parquet_grl, crs=grl_crs, epsg=3413,
+         out_nc_qrf=ant_Aq2_qrf_nc, 
+         out_nc_gb=ant_Aq2_gb_nc, 
+         out_nc_sim=ant_Aq2_sim_nc),
+    dict(label="grl", parquet=parquet_grl, 
+         crs=grl_crs, epsg=3413,
          x_col="x", y_col="y",
-         out_nc_qrf=grl_Kq2_qrf_nc, out_nc_gb=grl_Kq2_gb_nc, out_nc_sim=grl_Kq2_sim_nc),
+         out_nc_qrf=grl_Kq2_qrf_nc, 
+         out_nc_gb=grl_Kq2_gb_nc, 
+         out_nc_sim=grl_Kq2_sim_nc),
 ]
 
 # ── Heat-flow thresholds [W/m²] ───────────────────────────────────────────────
-q_min     = 0.0      # hard minimum
-q_clip_min = 0.001   # lower clip applied in 1_Import
-q_max     = 0.250    # 'normal' upper for statistics
+q_min     = 0.0      # 'normal' lowe for statistics and plots
+q_clip_min = 0.001   # hard minimum
+q_max     = 0.200    # 'normal' upper for statistics and plots
 q_clip_max = 0.350   # upper clip applied in 1_Import — used as model ceiling
 
 deep_ocean_threshold     = -5000.0   # DEM threshold for ocean masking [m]
