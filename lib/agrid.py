@@ -1582,3 +1582,4 @@ class Grid:
         if self.verbose:
             self._log(f"contour_map() [{time.time()-t0:.2f}s]")
         return fig, ax
+
