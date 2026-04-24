@@ -8,7 +8,7 @@ import sys; sys.path.insert(0, str(Path('.').resolve()))
 from recipe import dd
 
 
-MODEL_VERSION = '0_2'
+MODEL_VERSION = '0_3'
 
 VERBOSE = True
 

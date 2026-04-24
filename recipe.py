@@ -151,6 +151,71 @@ def compute_corrected_dem(self, d):
 
     return smoothed.ravel()
 
+def compute_sediment_log_antarctica(self, d):
+    """
+    Compute log-transformed sediment thickness for the Antarctica grid.
+
+    Steps:
+    1. Read Li 2022 sediment likelihood raster (hardcoded path).
+    2. Build a weight mask: 0 where likelihood < 0.5, else 1.
+       (NaN likelihood → weight = 1, i.e. treat as "present".)
+    3. Apply weight mask to SEDIMENT (zero out low-likelihood cells).
+    4. Smooth the masked sediment field using a NaN-aware weighted kernel
+       (identical pattern to compute_corrected_dem).
+    5. Apply log1p to the smoothed field → 0 where sediment=0, log-scale above.
+    6. Return flat array (no NaNs).
+    """
+    import numpy as np
+    import rasterio
+    from scipy.ndimage import uniform_filter, gaussian_filter
+
+    # ── 1. Read likelihood raster ──────────────────────────────────────────
+    likelihood_path = "../data/li_2022/SSB_Likelihood.tif"
+    pts = list(zip(self.lons, self.lats))
+    with rasterio.open(likelihood_path) as src:
+        nodata = src.nodata
+        lik = np.array(list(src.sample(pts)), dtype=float).flatten()
+        if nodata is not None:
+            lik[lik == nodata] = np.nan
+
+    # ── 2. Weight mask: 0 where likelihood is defined AND < 0.5, else 1 ───
+    weight_mask = np.where(np.isfinite(lik) & (lik < 0.5), 0.0, 1.0)
+
+    # ── 3. Apply mask to SEDIMENT ──────────────────────────────────────────
+    sed = self.df["SEDIMENT"].values.copy().astype(float)
+    sed = sed * weight_mask   # zero out low-likelihood cells
+
+    # ── 4. Smooth on the 2-D grid (NaN-aware weighted kernel) ─────────────
+    grid_spacing_m = d.get("grid_spacing_m", 5_000)
+    kernel_km      = d.get("kernel_km", 15.0)
+    kernel_cells   = max(1, round(kernel_km * 1000 / grid_spacing_m))
+
+    if self.reshape_tuple is None:
+        self._infer_regular_shape(coord_x="x", coord_y="y")
+    ny, nx = self.reshape_tuple
+
+    sed_2d      = sed.reshape(ny, nx)
+    nan_mask    = np.isnan(sed_2d)
+
+    size   = 2 * kernel_cells + 1
+    filled  = np.where(nan_mask, 0.0, sed_2d)
+    weights = np.where(nan_mask, 0.0, 1.0)
+
+    if d.get("kernel_type", "uniform") == "gaussian":
+        smoothed = gaussian_filter(filled,  sigma=kernel_cells, mode="nearest")
+        wsum     = gaussian_filter(weights, sigma=kernel_cells, mode="nearest")
+    else:
+        smoothed = uniform_filter(filled,  size=size, mode="nearest")
+        wsum     = uniform_filter(weights, size=size, mode="nearest")
+
+    smoothed = np.where(wsum > 0, smoothed / wsum, 0.0)
+    smoothed[nan_mask] = 0.0   # outside-coverage cells → 0 (not NaN)
+
+    # ── 5. log1p transform ─────────────────────────────────────────────────
+    # log1p(0) = 0  (no -inf); log1p(x) ≈ log(x) for large x
+    result = np.log1p(smoothed.ravel())
+
+    return result
 
 # def compute_corrected_dem(self, d):
 #     bed = xr.open_dataset(d["bed_path"])[d["bed_var"]]
@@ -159,18 +224,15 @@ def compute_corrected_dem(self, d):
 #     return (bed.interp(x=("points",x), y=("points",y)).values +
 #             iso.interp(x=("points",x), y=("points",y)).values)
 
-def compute_grl_sed(self, d):
-    da = (xr.open_dataset(d["filepath"])[d.get("band_var","Band1")]
-          .rio.set_spatial_dims(x_dim="x", y_dim="y")
-          .rio.write_crs(d.get("source_crs","EPSG:3574")))
-    da_geo = da.rio.reproject("EPSG:4326")
-    vals = da_geo.interp(
-        x=xr.DataArray(self.df["lon"].values, dims="points"),
-        y=xr.DataArray(self.df["lat"].values, dims="points"),
-        method="nearest").values
-    return np.where(vals >= 1, 1.0, 0.0)
+
 
 # ── Observable dictionary ─────────────────────────────────────────────────
+
+
+
+
+
+
 
 dd = [
 
@@ -399,37 +461,30 @@ dd = [
  "description":"Seismic tectonic regions SL2013sv",
  "note":"NOT in obs_list — diagnostics only."},
 
-# ── SEDIMENT — three grid-keyed variants ──────────────────────────
+# ── SEDIMENT_LOG — three grid-keyed variants ──────────────────────────
 
-{"label":"SEDIMENT",
- "filepath_or_buffer":"../data/GST1/GST1_WGS84.XYZ",
- "import_type":"read_ascii", "sep": r"\s+", 
- "x_col":1, "y_col":0, "value_col":2,
- "interpol_method":"linear",
- "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
- "description":"Sediment thickness from gravity (GST1)",
- "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175)"},
+# IHFC and Greenland: plain log1p, no likelihood masking needed
+{
+    "label": "SEDIMENT_LOG", "grid": ["IHFC", "Greenland"],
+    "import_type": "compute",
+    "func": lambda s, d: np.log1p(s.df["SEDIMENT"].values.astype(float)),
+    "depends_on": ["SEDIMENT"],
+    "unit": "log(m+1)", "v_range": (0, 8.5), "cmap": "cmc.oslo_r",
+    "description": "log1p sediment thickness (GST1)",
+},
 
-{"label":"SEDIMENT_LIKELIHOOD", "grid":"Antarctica",
- "filepath_or_buffer":"../data/li_2022/SSB_Likelihood.tif",
- "import_type":"read_raster",
- "z_preproc": lambda p: np.where(p>0.5, 1.0, 0.0),
- "interpol_method":"nearest",
- "unit":"binary", "v_range":(0,1), "cmap":"Dark2",
- "sigma":0.0, "weight":1.0, "reference":"Li2022",
- "description":"Subglacial sediment presence Antarctica (Li & Aitken 2022, P>0.5)"},
-
-
-{"label":"SEDIMENT_LOG",
- "import_type":"compute",
- "func": lambda s: (lambda lik, sed: np.log(
-    np.where(~(np.isfinite(lik) & (lik < 0.5)), sed, np.nan),
-    out=np.full_like(sed, np.nan, dtype=float),
-    where=~(np.isfinite(lik) & (lik < 0.5))
-))(s.df["SEDIMENT_LIKELIHOOD"].values, s.df["SEDIMENT"].values),
- "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
- "description":"Sediment thickness from gravity (GST1)",
- "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175) Li & Aitken 2022"},
+# Antarctica: likelihood-masked, smoothed, then log1p
+{
+    "label": "SEDIMENT_LOG", "grid": "Antarctica",
+    "import_type": "compute",
+    "func": compute_sediment_log_antarctica,
+    "depends_on": ["SEDIMENT"],
+    "grid_spacing_m": 5_000,
+    "kernel_km": 15.0,
+    "kernel_type": "uniform",
+    "unit": "log(m+1)", "v_range": (0, 8.5), "cmap": "cmc.oslo_r",
+    "description": "log1p sediment thickness, Li2022 likelihood-masked + smoothed (Antarctica)",
+},
 
 
 # ── Derived / computed ─────────────────────────────────────────────
