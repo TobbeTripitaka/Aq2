@@ -151,39 +151,60 @@ def compute_corrected_dem(self, d):
 
     return smoothed.ravel()
 
-def compute_sediment_antarctica(self, d):
-    """
-    Compute sediment thickness for the Antarctica grid.
 
-    Steps:
-    1. Read Li 2022 sediment likelihood raster (hardcoded path).
-    2. Build a weight mask: 0 where likelihood < 0.5, else 1.
-       (NaN likelihood → weight = 1, i.e. treat as "present".)
-    3. Apply weight mask to SEDIMENT (zero out low-likelihood cells).
-    4. Smooth the masked sediment field using a NaN-aware weighted kernel
-       (identical pattern to compute_corrected_dem).
-    """
+def compute_sediment_antarctica(self, d):
     import numpy as np
     import rasterio
-    from scipy.ndimage import uniform_filter, gaussian_filter
+    import stripy
+    import pandas as pd
+    from scipy.ndimage import uniform_filter
 
-    # ── 1. Read likelihood raster ──────────────────────────────────────────
-    likelihood_path = "../data/li_2022/SSB_Likelihood.tif"
+    # ── Read & crop GST1 to Antarctic region ──────────────────────────────
+    tab = (pd.read_csv("../data/GST1/GST1_WGS84.XYZ", sep=r"\s+", header=None)
+             .dropna()
+             .apply(pd.to_numeric, errors="coerce")
+             .dropna()
+             .values)
+    # columns: 0=lat, 1=lon, 2=thickness
+    lats_src = tab[:, 0]
+    lons_src = tab[:, 1]
+    vals_src  = tab[:, 2]
+
+    # Crop to Antarctica + generous buffer (avoids global triangulation)
+    mask_src = lats_src <= -50.0
+    lats_src = lats_src[mask_src]
+    lons_src = lons_src[mask_src]
+    vals_src  = vals_src[mask_src]
+
+    # Deduplicate lon/lat (stripy fails on duplicates)
+    coords = np.stack([lons_src, lats_src], axis=1)
+    _, unique_idx = np.unique(coords, axis=0, return_index=True)
+    lats_src = lats_src[unique_idx]
+    lons_src = lons_src[unique_idx]
+    vals_src  = vals_src[unique_idx]
+
+    # ── Spherical triangulation & interpolation ───────────────────────────
+    st = stripy.sTriangulation(
+        lons=np.radians(lons_src), lats=np.radians(lats_src), permute=True
+    )
+    sed, _ = st.interpolate(
+        lats=self.rad_lats, lons=self.rad_lons,
+        zdata=vals_src, order=1
+    )
+    sed = np.asarray(sed, dtype=float)
+
+    # ── Li 2022 likelihood mask ───────────────────────────────────────────
     pts = list(zip(self.lons, self.lats))
-    with rasterio.open(likelihood_path) as src:
+    with rasterio.open("../data/li_2022/SSB_Likelihood.tif") as src:
         nodata = src.nodata
         lik = np.array(list(src.sample(pts)), dtype=float).flatten()
         if nodata is not None:
             lik[lik == nodata] = np.nan
 
-    # ── 2. Weight mask: 0 where likelihood is defined AND < 0.5, else 1 ───
     weight_mask = np.where(np.isfinite(lik) & (lik < 0.5), 0.0, 1.0)
+    sed = sed * weight_mask
 
-    # ── 3. Apply mask to SEDIMENT ──────────────────────────────────────────
-    sed = self.df["SEDIMENT"].values.copy().astype(float)
-    sed = sed * weight_mask   # zero out low-likelihood cells
-
-    # ── 4. Smooth on the 2-D grid (NaN-aware weighted kernel) ─────────────
+    # ── Smooth ────────────────────────────────────────────────────────────
     grid_spacing_m = d.get("grid_spacing_m", 5_000)
     kernel_km      = d.get("kernel_km", 15.0)
     kernel_cells   = max(1, round(kernel_km * 1000 / grid_spacing_m))
@@ -192,25 +213,20 @@ def compute_sediment_antarctica(self, d):
         self._infer_regular_shape(coord_x="x", coord_y="y")
     ny, nx = self.reshape_tuple
 
-    sed_2d      = sed.reshape(ny, nx)
-    nan_mask    = np.isnan(sed_2d)
+    sed_2d   = sed.reshape(ny, nx)
+    nan_mask = np.isnan(sed_2d)
 
-    size   = 2 * kernel_cells + 1
+    size    = 2 * kernel_cells + 1
     filled  = np.where(nan_mask, 0.0, sed_2d)
     weights = np.where(nan_mask, 0.0, 1.0)
 
-    if d.get("kernel_type", "uniform") == "gaussian":
-        smoothed = gaussian_filter(filled,  sigma=kernel_cells, mode="nearest")
-        wsum     = gaussian_filter(weights, sigma=kernel_cells, mode="nearest")
-    else:
-        smoothed = uniform_filter(filled,  size=size, mode="nearest")
-        wsum     = uniform_filter(weights, size=size, mode="nearest")
+    smoothed = uniform_filter(filled,  size=size, mode="nearest")
+    wsum     = uniform_filter(weights, size=size, mode="nearest")
 
     smoothed = np.where(wsum > 0, smoothed / wsum, 0.0)
-    smoothed[nan_mask] = 0.0   # outside-coverage cells → 0 (not NaN)
+    smoothed[nan_mask] = 0.0
 
     return smoothed.ravel()
-
 # def compute_corrected_dem(self, d):
 #     bed = xr.open_dataset(d["bed_path"])[d["bed_var"]]
 #     iso = xr.open_dataset(d["iso_path"])[d["iso_var"]]
@@ -228,7 +244,7 @@ dd = [
  "filepath_or_buffer":"../data/GEMMA/moho/t6.asc",
  "import_type":"read_raster",
  "z_preproc": lambda d: d*1000.0, "interpol_method":"linear",
- "unit":"metre", "v_range":(-54_000,-9_200), "cmap":"cmc.bamako",
+ "unit":"metre", "v_range":(-55_000,-5_000), "cmap":"cmc.bamako",
  "reference":"GEMMA",
  "description":"Moho depth (GEMMA gravity-derived)"},
 
@@ -266,7 +282,7 @@ dd = [
 {"label":"DEM", "grid":"IHFC",
  "filepath_or_buffer":"../data/ETOPO1/ETOPO1_Bed_g_geotiff.tif",
  "import_type":"read_raster",
- "unit":"metre", "v_range":(-4_900,4_900), "cmap":"cmc.oleron",
+ "unit":"metre", "v_range":(-5_500,5_500), "cmap":"cmc.oleron",
  "reference":"ETOPO1",
  "description":"ETOPO1 DEM (reference grid)"},
 
@@ -314,7 +330,7 @@ dd = [
  "import_type":"read_ascii", "delim_whitespace":True,
  "usecols":[0,1,2], "names":["lon","lat","depth"], "header":1,
  "z_preproc": lambda d: -d*1000.0, "interpol_method":"linear",
- "unit":"metre", "v_range":(-52_000,-2_300), "cmap":"cmc.bamako",
+ "unit":"metre", "v_range":(-52_000,-2_000), "cmap":"cmc.bamako",
  "description":"Curie temperature depth (Gard & Hasterok 2021)"},
 
 # ── EMAG2 ──────────────────────────────────────────────────────────
@@ -339,7 +355,7 @@ dd = [
  "import_type":"read_ascii", "delim_whitespace":True,
  "usecols":[0,1,2], "names":["lon","lat","gal"], "header":34,
  "z_preproc": lambda g: g*0.001, "interpol_method":"linear",
- "unit":"mGal", "v_range":(-0.25,0.34), "cmap":"cmc.oleron",
+ "unit":"mGal", "v_range":(-0.4,0.4), "cmap":"cmc.oleron",
  "description":"Bouguer gravity anomaly (EIGEN-6C4)"},
 
 {"label":"SI",
@@ -355,7 +371,7 @@ dd = [
  "import_type":"read_ascii", "delim_whitespace":True,
  "usecols":[0,1,2], "names":["lon","lat","m"], "header":37,
  "interpol_method":"linear",
- "unit":"metre", "v_range":(-56,62), "cmap":"cmc.bamako",
+ "unit":"metre", "v_range":(-70,70), "cmap":"cmc.bamako",
  "description":"Geoid height (EIGEN-6C4)"},
 
 # ── S-wave velocity slices (REVEAL) ───────────────────────────────
@@ -369,7 +385,7 @@ dd = [
    "description":f"Vsv at {depth} km (REVEAL)"}
   for depth,vr in [
       (60,  (3.8, 4.8)),
-      (70,  (3.9, 4.7)),   # best S-wave depth by univariate CV R²
+      (70,  (3.9, 4.9)),   # best S-wave depth by univariate CV R²
       (80,  (3.9, 4.8)), 
       (90,  (3.9, 4.7)),   # second best
       (100,  (4.0, 4.7)),
@@ -399,7 +415,7 @@ dd = [
  "import_type":"read_ascii", "delim_whitespace":True,
  "usecols":[0,1,6], "names":["lon","lat","density"], "header":10,
  "x_preproc": lambda x: np.where(x>180, x-360, x), "interpol_method":"linear",
- "unit":"kg/m3", "v_range":(3_200,3_400), "cmap":"cmc.batlow_r",
+ "unit":"kg/m3", "v_range":(3_250,3_400), "cmap":"cmc.batlow_r",
  "sigma":40, "weight":1.0, "reference":"Afonso2019",
  "description":"Lithospheric mantle density (LithoRef18)"},
 
@@ -463,7 +479,6 @@ dd = [
     "label": "SEDIMENT", "grid": "Antarctica",
     "import_type": "compute",
     "func": compute_sediment_antarctica,
-    "depends_on": ["SEDIMENT"],
     "grid_spacing_m": 5_000,
     "kernel_km": 15.0,
     "kernel_type": "uniform",
@@ -476,7 +491,7 @@ dd = [
 {"label":"MAG_SEIS_MOHO", "import_type":"compute",
  "func": lambda s,d: s.df["MOHO"].values - s.df["CTD"].values,
  "depends_on":["MOHO","CTD"],
- "unit":"metre", "v_range":(-23_000,16_000), "cmap":"cmc.broc",
+ "unit":"metre", "v_range":(-23_000,18_000), "cmap":"cmc.broc",
  "sigma":500, "weight":1.0,
  "description":"Seismic Moho minus Curie depth"},
 
@@ -501,7 +516,7 @@ dd = [
  "func": lambda s,d: np.where(s.df["REVEAL_S80"].values==0, np.nan,
                                s.df["REVEAL_P50"].values/s.df["REVEAL_S80"].values),
  "depends_on":["REVEAL_P50","REVEAL_S80"],
- "unit":"dimensionless", "v_range":(1.7,2.0), "cmap":"cmc.batlow",
+ "unit":"dimensionless", "v_range":(1.7,2.2), "cmap":"cmc.batlow",
  "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 120-140 km"},
 
 
