@@ -401,7 +401,7 @@ dd = [
 
 # ── SEDIMENT — three grid-keyed variants ──────────────────────────
 
-{"label":"SEDIMENT", "grid":["Greenland", "IHFC"],
+{"label":"SEDIMENT",
  "filepath_or_buffer":"../data/GST1/GST1_WGS84.XYZ",
  "import_type":"read_ascii", "sep": r"\s+", 
  "x_col":1, "y_col":0, "value_col":2,
@@ -420,18 +420,16 @@ dd = [
  "description":"Subglacial sediment presence Antarctica (Li & Aitken 2022, P>0.5)"},
 
 
-{"label":"SEDIMENT", "grid":["Antarctica"],
- "filepath_or_buffer":"../data/GST1/GST1_WGS84.XYZ",
- "import_type":"read_ascii", "sep": r"\s+", 
- "x_col":1, "y_col":0, "value_col":2,
- "interpol_method":"linear",
+{"label":"SEDIMENT_LOG",
+ "import_type":"compute",
+ "func": lambda s: (lambda lik, sed: np.log(
+    np.where(~(np.isfinite(lik) & (lik < 0.5)), sed, np.nan),
+    out=np.full_like(sed, np.nan, dtype=float),
+    where=~(np.isfinite(lik) & (lik < 0.5))
+))(s.df["SEDIMENT_LIKELIHOOD"].values, s.df["SEDIMENT"].values),
  "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
  "description":"Sediment thickness from gravity (GST1)",
- "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175)"},
-
-
-
-
+ "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175) Li & Aitken 2022"},
 
 
 # ── Derived / computed ─────────────────────────────────────────────
@@ -465,8 +463,6 @@ dd = [
  "depends_on":["REVEAL_P50","REVEAL_S80"],
  "unit":"dimensionless", "v_range":(1.7,2.0), "cmap":"cmc.batlow",
  "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 120-140 km"},
-
-
 
 
 {"label":"VOLC_DIST", "import_type":"compute",
