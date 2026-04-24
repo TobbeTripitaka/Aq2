@@ -401,7 +401,7 @@ dd = [
 
 # ── SEDIMENT — three grid-keyed variants ──────────────────────────
 
-{"label":"SEDIMENT",
+{"label":"SEDIMENT", "grid":["Greenland", "IHFC"],
  "filepath_or_buffer":"../data/GST1/GST1_WGS84.XYZ",
  "import_type":"read_ascii", "sep": r"\s+", 
  "x_col":1, "y_col":0, "value_col":2,
@@ -418,6 +418,21 @@ dd = [
  "unit":"binary", "v_range":(0,1), "cmap":"Dark2",
  "sigma":0.0, "weight":1.0, "reference":"Li2022",
  "description":"Subglacial sediment presence Antarctica (Li & Aitken 2022, P>0.5)"},
+
+
+{"label":"SEDIMENT", "grid":["Antarctica"],
+ "filepath_or_buffer":"../data/GST1/GST1_WGS84.XYZ",
+ "import_type":"read_ascii", "sep": r"\s+", 
+ "x_col":1, "y_col":0, "value_col":2,
+ "interpol_method":"linear",
+ "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
+ "description":"Sediment thickness from gravity (GST1)",
+ "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175)"},
+
+
+
+
+
 
 # ── Derived / computed ─────────────────────────────────────────────
 {"label":"MAG_SEIS_MOHO", "import_type":"compute",
