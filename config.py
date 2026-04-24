@@ -128,7 +128,7 @@ obs_model = [
     "REVEAL_S80", "REVEAL_S90", "REVEAL_S70", "REVEAL_S100",
     "REVEAL_VP60VS70", "REVEAL_VP90VS60", "REVEAL_VP50VS80",
     "LITH_RHO", "CRUST_RHO", "MAG_SEIS_MOHO",
-    "SEDIMENT_LOG", "CTD", "EMAG2_LOG",
+    "SEDIMENT", "CTD", "EMAG2_LOG",
 ]
 
 # ── obs_sweep : all sweep candidates (obs_model + extras worth testing) ────────
