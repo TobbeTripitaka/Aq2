@@ -206,7 +206,7 @@ def compute_sediment_antarctica(self, d):
 
     # ── Smooth ────────────────────────────────────────────────────────────
     grid_spacing_m = d.get("grid_spacing_m", 5_000)
-    kernel_km      = d.get("kernel_km", 15.0)
+    kernel_km      = d.get("kernel_km", 20.0)
     kernel_cells   = max(1, round(kernel_km * 1000 / grid_spacing_m))
 
     if self.reshape_tuple is None:
@@ -480,7 +480,7 @@ dd = [
     "import_type": "compute",
     "func": compute_sediment_antarctica,
     "grid_spacing_m": 5_000,
-    "kernel_km": 15.0,
+    "kernel_km": 20.0,
     "kernel_type": "uniform",
     "unit": "log(m+1)", "v_range": (0, 5000), "cmap": "cmc.oslo_r",
     "description": "sediment thickness, Li2022 likelihood-masked + smoothed (Antarctica)",

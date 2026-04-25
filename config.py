@@ -187,7 +187,7 @@ PARAM_N_RUNS     = 200
 MC_N_RUNS        = 300
 N_OPTUNA_TRIALS  = 200
 CV_FOLDS_SIM     = 5
-SIGMA_BOUNDS     = (0.1, 5.0)
+SIGMA_BOUNDS     = (0.01, 4.0)
 K_RANGE          = (2.0, 20.0)
 
 PARAM_GRID = {
