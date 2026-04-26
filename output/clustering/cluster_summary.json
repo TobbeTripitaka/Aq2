@@ -1,0 +1,79 @@
+{
+  "model_version": "03",
+  "NCLUSTERS_BEST": 3,
+  "coarsen_factor": 5,
+  "native_spacing_m": 5000,
+  "target_spacing_m": 25000,
+  "n_features_sel": 22,
+  "n_features_clust": 21,
+  "n_train": 30847,
+  "n_cv_folds": 5,
+  "cv_thresholds": {
+    "b_mean_cv": 0.013448977530719065,
+    "b_excess_cv": 0.024277967835253777,
+    "b_deficit_cv": 0.008211310920050938,
+    "Rcv25": 0.2761007247106331,
+    "Rcv75": 0.4863452195654954,
+    "A50_cv": 0.0004014258712386627,
+    "E50_cv": 8.070629004932357e-05
+  },
+  "diagnostics": [
+    {
+      "NCLUSTERS": 2,
+      "Inertia": 461445.6,
+      "Silhouette": 0.2704,
+      "Davies_Bouldin": 1.4867,
+      "Cluster_sizes": [
+        12088,
+        18760
+      ]
+    },
+    {
+      "NCLUSTERS": 3,
+      "Inertia": 399859.3,
+      "Silhouette": 0.2505,
+      "Davies_Bouldin": 1.4705,
+      "Cluster_sizes": [
+        17090,
+        7816,
+        5942
+      ]
+    },
+    {
+      "NCLUSTERS": 4,
+      "Inertia": 346985.3,
+      "Silhouette": 0.2214,
+      "Davies_Bouldin": 1.6106,
+      "Cluster_sizes": [
+        7641,
+        5676,
+        10415,
+        7116
+      ]
+    },
+    {
+      "NCLUSTERS": 5,
+      "Inertia": 320789.2,
+      "Silhouette": 0.2147,
+      "Davies_Bouldin": 1.6021,
+      "Cluster_sizes": [
+        2776,
+        10390,
+        4046,
+        6470,
+        7166
+      ]
+    }
+  ],
+  "outputs": {
+    "cluster_diagnostics_csv": "output/clustering/cluster_diagnostics.csv",
+    "cv_thresholds_json": "output/clustering/cv_thresholds.json",
+    "expert_artefacts_pkl": "output/clustering/expert_qrf_n3.pkl",
+    "ant_cluster_labels": "output/clustering/ant_cluster_labels.parquet",
+    "grl_cluster_labels": "output/clustering/grl_cluster_labels.parquet",
+    "ant_diagnostics_pkl": "output/clustering/ant_diagnostics.pkl",
+    "grl_diagnostics_pkl": "output/clustering/grl_diagnostics.pkl",
+    "ant_25km_parquet": "data/antarctica_25km.parquet",
+    "grl_25km_parquet": "data/greenland_25km.parquet"
+  }
+}

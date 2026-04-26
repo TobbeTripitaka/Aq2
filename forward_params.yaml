@@ -1,0 +1,102 @@
+# =============================================================================
+# forward_params.yaml  —  Aq2 / Kq2 Forward Heat-Flow Model Parameters
+# =============================================================================
+# Supplements (and may override) constants in config.py.
+# Load with:
+#   import yaml
+#   with open("params/forward_params.yaml") as f:
+#       FP = yaml.safe_load(f)
+# =============================================================================
+
+region: antarctica           # 'antarctica' or 'greenland'
+
+# -- Input files ---------------------------------------------------------------
+# Resolved relative to config.py targets_dir unless overridden.
+# input_nc_ant: output/targets/Aq1_5_QRF_v0_3.nc   # default from config.py
+# input_nc_grl: output/targets/Kq1_5_QRF_v0_3.nc
+
+# -- STEP 1 : Oversampling -----------------------------------------------------
+oversampling:
+  method:          cubic        # scipy interp method for initial interpolation
+  coarse_spacing_m: 5000.0      # source grid spacing [m]
+  enforce_cell_mean: true       # per-cell conservative correction (recommended)
+  global_mean_tol:  1.0e-6      # W/m2 tolerance for mean conservation assert
+  dask_chunks:                  # lazy BedMachine chunk size
+    y: 2000
+    x: 2000
+
+# -- STEP 2 : Volcanic kernels -------------------------------------------------
+volcanic:
+  volc_list_path:    ../data/volcanos/volcanic list.xlsx
+  holocene_path:     ../data/volcanos/GVP_Volcano_List_Holocene.xlsx
+  pleistocene_path:  ../data/volcanos/GVP_Volcano_List_Pleistocene.xlsx
+
+  kernel_classes:
+    active_volcano:
+      sigma_inner_m:       10000.0    # [m]
+      sigma_outer_factor:  3.0        # sigma_outer = factor x sigma_inner
+      amplitude_factor:    30.0       # peak local enhancement factor
+      extent_m:            100000.0   # kernel truncation radius [m]
+
+    pleistocene_volcano:
+      sigma_inner_m:       20000.0
+      sigma_outer_factor:  3.0
+      amplitude_factor:    5.0
+      extent_m:            100000.0
+
+  # Global uncertainty defaults (per-feature: add columns to catalogue)
+  default_p_exists:     0.9     # prior P(feature exists) -- placeholder
+  default_sigma_factor: 0.3     # fractional amplitude uncertainty
+
+  combination: log_additive     # see lib/forward.py for rationale
+
+# -- STEP 2b : Hydrothermal vents (Greenland only) ----------------------------
+hydrothermal:
+  catalogue_csv:  data/vents_grl.csv    # placeholder -- to be replaced
+  kernel_classes:
+    hydrothermal:
+      sigma_inner_m:       5000.0
+      sigma_outer_factor:  3.0
+      amplitude_factor:    10.0
+      extent_m:            50000.0
+  default_p_exists:     0.9
+  default_sigma_factor: 0.3
+  combination: log_additive
+
+# -- STEP 3 : Topographic correction ------------------------------------------
+topo_correction:
+  r_m:        5000.0    # relief scale radius [m]
+  k_ref:      2.5       # reference thermal conductivity [W m-1 K-1]
+
+  # Phase 1 placeholders (spatially constant)
+  # Phase 2: replace with paths to spatially varying 2-D NetCDF arrays
+  k_rock_default:  1.8    # [W m-1 K-1] -- geology-dependent in Phase 2
+  k_ice_default:   2.1    # [W m-1 K-1] -- temperature-dependent in Phase 2
+  k_ocean:         6.0    # placeholder for ocean / sub-ocean cells
+
+  # Phase 2 paths (uncomment when data available)
+  # k_rock_nc:  data/k_rock_geology.nc
+  # k_ice_nc:   data/k_ice_basal_temp.nc
+
+  clip_max_Wm2:   1.0     # hard clip on |DeltaG_total| [W m-2]; review after run
+  apply_only_where_bedmachine_direct: true
+  # BedMachine treated as truth where direct obs exist (source in {1,2,7,10}).
+  # No correction where BedMachine is interpolated.
+  # Submarine topographic correction NOT implemented -- documented in NetCDF attrs.
+
+# -- Uncertainty ---------------------------------------------------------------
+uncertainty:
+  mode: parametric          # 'parametric' (Phase 1) | 'ensemble' (Phase 2)
+  n_ensemble: 200           # used only when mode == ensemble
+
+# -- Output --------------------------------------------------------------------
+output:
+  compression_level: 4      # zlib 1-9
+  temp_dir:   ./temp
+  final_dir:  ./output
+  ant_forward_nc:   ant_forward_v0_3.nc
+  grl_forward_nc:   grl_forward_v0_3.nc
+  cache_step1_ant:  temp/ant_step1_oversample.nc
+  cache_step2_ant:  temp/ant_step2_volcanic.nc
+  cache_step1_grl:  temp/grl_step1_oversample.nc
+  cache_step2_grl:  temp/grl_step2_volcanic.nc
