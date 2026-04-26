@@ -1,4 +1,4 @@
-N_CLUSTERS,Inertia,Silhouette,Davies-Bouldin,Cluster_sizes
+NCLUSTERS,Inertia,Silhouette,Davies_Bouldin,Cluster_sizes
 2,461445.6,0.2704,1.4867,"[12088, 18760]"
 3,399859.3,0.2505,1.4705,"[17090, 7816, 5942]"
 4,346985.3,0.2214,1.6106,"[7641, 5676, 10415, 7116]"

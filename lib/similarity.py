@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# similarity.py v0.1.3 — Tobias Staal 2026
+# similarity.py v0.2.0 — Tobias Staal 2026
 # tobias.staal@utas.edu.au
 # MIT License
 
@@ -82,6 +82,29 @@ def standardise_features(X: np.ndarray,
     return (X - mean[None, :]) / std_safe[None, :]
 
 
+def _resolve_kernel_mode(kernel: str) -> int:
+    """Map kernel name to integer code for numba cores."""
+    k = str(kernel).strip().lower()
+    if k in ("additive", "legacy", "legacy_additive"):
+        return 0
+    if k in ("rbf", "gaussian", "standard", "standard_rbf"):
+        return 1
+    raise ValueError(
+        "kernel must be one of {'rbf', 'gaussian', 'standard', 'standard_rbf', "
+        "'additive', 'legacy', 'legacy_additive'}"
+    )
+
+
+def _resolve_weight_mode(weight_mode: str) -> int:
+    """Map weighting mode to integer code for numba cores."""
+    w = str(weight_mode).strip().lower()
+    if w in ("shifted_exp", "robust", "default"):
+        return 0
+    if w in ("legacy_exp", "legacy"):
+        return 1
+    raise ValueError("weight_mode must be one of {'shifted_exp', 'robust', 'default', 'legacy_exp', 'legacy'}")
+
+
 # ----------------------------------------------------------------------
 # Gaussian similarity kernel
 # ----------------------------------------------------------------------
@@ -126,31 +149,24 @@ def _similarity_sweep_core(X_ref: np.ndarray,
                             H_ref: np.ndarray,
                             W_r: np.ndarray,
                             sigma_arr: np.ndarray,
-                            K: float
+                            K: float,
+                            kernel_mode: int,
+                            weight_mode: int
                             ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Leave-one-out similarity sweep — numba core.
 
-    For test point idx:
-        B[j]     = sum_k exp(-0.5*((X_ref[j,k]-X_ref[idx,k])/sigma[k])^2)
-        B[idx]   = 0  (remove self)
-        N_sim[j] = B[j] * W_r[j]          # per-reference, sum over features * weight
-        w_i[j]   = K ** N_sim[j]           # per-reference — K is meaningful
-        Q[idx]   = sum(w_i * H_r) / sum(w_i)
+    kernel_mode:
+        0 -> legacy additive per-feature Gaussian sum
+        1 -> standard multivariate Gaussian / RBF
 
-    Parameters
-    ----------
-    X_ref     : (n_ref, n_feat)
-    H_ref     : (n_ref,)
-    W_r       : (n_ref,)  per-reference scalar weights
-    sigma_arr : (n_feat,)
-    K         : float
+    weight_mode:
+        0 -> robust shifted exponential, w = W_r * max(K**S - 1, 0)
+        1 -> legacy exponential,        w = K**(S * W_r)
 
-    Returns
-    -------
-    Q, sig_Q  : (n_ref,)
-    N_sim_last: (n_ref,)  N_sim from last iteration (diagnostics)
-    obs_sum   : (n_ref, n_ref)  B matrix across all test points (diagnostics)
+    The default public API uses kernel_mode=1 and weight_mode=0, giving a
+    standard RBF similarity with zero weight at zero similarity and proper
+    leave-one-out exclusion.
     """
     n_ref, n_feat = X_ref.shape
     Q         = np.zeros(n_ref, dtype=np.float32)
@@ -159,25 +175,39 @@ def _similarity_sweep_core(X_ref: np.ndarray,
     obs_sum   = np.zeros((n_ref, n_ref), dtype=np.float32)
 
     for idx in range(n_ref):
-        # B[j] = sum of per-feature Gaussian similarities
-        B = np.empty(n_ref, dtype=np.float32)
+        S = np.empty(n_ref, dtype=np.float32)
         for j in range(n_ref):
-            s = 0.0
-            for k in range(n_feat):
-                d = (X_ref[j, k] - X_ref[idx, k]) / sigma_arr[k]
-                s += np.exp(-0.5 * d * d)
-            B[j] = s
+            if kernel_mode == 0:
+                s = 0.0
+                for k in range(n_feat):
+                    d = (X_ref[j, k] - X_ref[idx, k]) / sigma_arr[k]
+                    s += np.exp(-0.5 * d * d)
+            else:
+                acc = 0.0
+                for k in range(n_feat):
+                    d = (X_ref[j, k] - X_ref[idx, k]) / sigma_arr[k]
+                    acc += d * d
+                s = np.exp(-0.5 * acc)
+            S[j] = s
             obs_sum[j, idx] = s
-        B[idx] = 0.0  # leave-one-out
 
-        # N_sim[j] = B[j] * W_r[j]  — per-reference
-        # w_i[j]   = K ** N_sim[j]  — varies per reference
         Sw  = 0.0
         num = 0.0
         for j in range(n_ref):
-            N_sim_j = B[j] * W_r[j]
-            N_sim_out[j] = N_sim_j
-            wi   = K ** N_sim_j
+            if j == idx:
+                N_sim_out[j] = 0.0
+                continue
+
+            sim_j = S[j]
+            N_sim_out[j] = sim_j
+
+            if weight_mode == 0:
+                wi = W_r[j] * (K ** sim_j - 1.0)
+                if wi < 0.0:
+                    wi = 0.0
+            else:
+                wi = K ** (sim_j * W_r[j])
+
             Sw  += wi
             num += wi * H_ref[j]
 
@@ -191,13 +221,23 @@ def _similarity_sweep_core(X_ref: np.ndarray,
 
         var = 0.0
         for j in range(n_ref):
-            N_sim_j = B[j] * W_r[j]
-            wi       = K ** N_sim_j
-            diff     = H_ref[j] - q_i
-            var     += wi * diff * diff
+            if j == idx:
+                continue
+
+            sim_j = S[j]
+            if weight_mode == 0:
+                wi = W_r[j] * (K ** sim_j - 1.0)
+                if wi < 0.0:
+                    wi = 0.0
+            else:
+                wi = K ** (sim_j * W_r[j])
+
+            diff = H_ref[j] - q_i
+            var += wi * diff * diff
         sig_Q[idx] = np.sqrt(var / Sw)
 
     return Q, sig_Q, N_sim_out, obs_sum
+
 
 
 def similarity_sweep(X_ref: np.ndarray,
@@ -205,7 +245,9 @@ def similarity_sweep(X_ref: np.ndarray,
                      W_r: np.ndarray,
                      S_r: np.ndarray,
                      K: float,
-                     use_sigma_helper: bool = True
+                     use_sigma_helper: bool = True,
+                     kernel: str = "rbf",
+                     weight_mode: str = "shifted_exp"
                      ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Leave-one-out similarity on reference database.
@@ -233,7 +275,9 @@ def similarity_sweep(X_ref: np.ndarray,
         sigma_arr = np.asarray(S_r, dtype=np.float32)
         if sigma_arr.ndim != 1:
             raise ValueError("use_sigma_helper=False requires S_r to be 1-D.")
-    return _similarity_sweep_core(X_ref, H_ref, W_r, sigma_arr, float(K))
+    kernel_mode = _resolve_kernel_mode(kernel)
+    weight_mode_code = _resolve_weight_mode(weight_mode)
+    return _similarity_sweep_core(X_ref, H_ref, W_r, sigma_arr, float(K), kernel_mode, weight_mode_code)
 
 
 # ----------------------------------------------------------------------
@@ -251,42 +295,20 @@ def _similarity_predict_core(X_ref: np.ndarray,
                               hist: bool,
                               n_bins: int,
                               q_min: float,
-                              q_max: float
+                              q_max: float,
+                              kernel_mode: int,
+                              weight_mode: int
                               ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Numba core for similarity prediction. Faithful port of similarity_test().
+    Numba core for similarity prediction.
 
-    For each target point j:
-        B[i]     = sum_k exp(-0.5*((X_tgt[j,k]-X_ref[i,k])/sigma[k])^2)
-                   (sum of per-feature Gaussian similarities to reference i)
-        N_sim[i] = B[i] * W_r[i]   — per-reference, varies across i
-        w_i[i]   = K ** N_sim[i]   — per-reference, K is meaningful
-        q[j]     = sum_i(w_i * H_ref[i]) / sum_i(w_i)
+    kernel_mode:
+        0 -> legacy additive per-feature Gaussian sum
+        1 -> standard multivariate Gaussian / RBF
 
-    W_t_flat is an optional per-target scalar multiplier on B (kept for
-    API compatibility with 3c sim_cv_r2 which passes w_te / ones).
-    It does NOT affect K sensitivity because it scales B uniformly for
-    all references at a given target, and therefore scales N_sim uniformly —
-    but since w_i = K**N_sim[i] and K**( c*x ) != c * K**x, W_t does have
-    a non-trivial effect on the sharpening. Pass ones to match the original
-    similarity_test exactly.
-
-    Parameters
-    ----------
-    X_ref      : (n_ref, n_feat)
-    X_tgt_flat : (n_tgt, n_feat)
-    H_ref      : (n_ref,)
-    W_r        : (n_ref,)   per-reference weights  ← KEY: makes N_sim per-reference
-    W_t_flat   : (n_tgt,)   per-target multiplier (pass ones for exact original)
-    sigma_arr  : (n_feat,)
-    K          : float
-    hist       : bool
-    n_bins     : int
-    q_min, q_max : float
-
-    Returns
-    -------
-    q_flat, sig_flat, N_flat, hist_flat
+    weight_mode:
+        0 -> robust shifted exponential, w = W_r * W_t * (K**S - 1)
+        1 -> legacy exponential,        w = K**(S * W_r * W_t)
     """
     n_ref, n_feat = X_ref.shape
     n_tgt = X_tgt_flat.shape[0]
@@ -303,52 +325,70 @@ def _similarity_predict_core(X_ref: np.ndarray,
         dq = 0.0
 
     for j in range(n_tgt):
-        wt = W_t_flat[j]  # per-target scalar (1.0 for original behaviour)
-
-        # B[i] = sum of per-feature Gaussian sims between target j and reference i
-        B = np.empty(n_ref, dtype=np.float32)
+        wt = W_t_flat[j]
+        S = np.empty(n_ref, dtype=np.float32)
         for i in range(n_ref):
-            s = 0.0
-            for k in range(n_feat):
-                d = (X_tgt_flat[j, k] - X_ref[i, k]) / sigma_arr[k]
-                s += np.exp(-0.5 * d * d)
-            B[i] = s
+            if kernel_mode == 0:
+                s = 0.0
+                for k in range(n_feat):
+                    d = (X_tgt_flat[j, k] - X_ref[i, k]) / sigma_arr[k]
+                    s += np.exp(-0.5 * d * d)
+            else:
+                acc = 0.0
+                for k in range(n_feat):
+                    d = (X_tgt_flat[j, k] - X_ref[i, k]) / sigma_arr[k]
+                    acc += d * d
+                s = np.exp(-0.5 * acc)
+            S[i] = s
 
-        # N_sim[i] = B[i] * W_r[i] * wt  — per-reference
-        # w_i[i]   = K ** N_sim[i]        — per-reference, varies across i
         Sw      = 0.0
         num     = 0.0
         N_total = 0.0
 
         for i in range(n_ref):
-            N_sim_i = B[i] * W_r[i] * wt
-            wi       = K ** N_sim_i
-            Sw      += wi
-            num     += wi * H_ref[i]
-            N_total += N_sim_i
+            sim_i = S[i]
+            N_total += sim_i
+            if weight_mode == 0:
+                wi = W_r[i] * wt * (K ** sim_i - 1.0)
+                if wi < 0.0:
+                    wi = 0.0
+            else:
+                wi = K ** (sim_i * W_r[i] * wt)
+            Sw  += wi
+            num += wi * H_ref[i]
 
-        N_flat[j] = N_total / n_ref  # mean N_sim (diagnostics)
+        N_flat[j] = N_total / n_ref
 
         if Sw <= 0.0:
             q_flat[j]   = np.nan
             sig_flat[j] = np.nan
             continue
 
-        qj          = num / Sw
-        q_flat[j]   = qj
+        qj        = num / Sw
+        q_flat[j] = qj
 
         var = 0.0
         for i in range(n_ref):
-            N_sim_i = B[i] * W_r[i] * wt
-            wi       = K ** N_sim_i
-            var     += wi * (H_ref[i] - qj) ** 2
+            sim_i = S[i]
+            if weight_mode == 0:
+                wi = W_r[i] * wt * (K ** sim_i - 1.0)
+                if wi < 0.0:
+                    wi = 0.0
+            else:
+                wi = K ** (sim_i * W_r[i] * wt)
+            var += wi * (H_ref[i] - qj) ** 2
         sig_flat[j] = np.sqrt(var / Sw)
 
         if hist:
             for i in range(n_ref):
-                N_sim_i = B[i] * W_r[i] * wt
-                wi = K ** N_sim_i
-                v  = H_ref[i]
+                sim_i = S[i]
+                if weight_mode == 0:
+                    wi = W_r[i] * wt * (K ** sim_i - 1.0)
+                    if wi < 0.0:
+                        wi = 0.0
+                else:
+                    wi = K ** (sim_i * W_r[i] * wt)
+                v = H_ref[i]
                 if v < q_min or v >= q_max:
                     continue
                 b = int((v - q_min) / dq)
@@ -364,6 +404,7 @@ def _similarity_predict_core(X_ref: np.ndarray,
     return q_flat, sig_flat, N_flat, hist_flat
 
 
+
 def similarity_predict(X_ref: np.ndarray,
                        H_ref: np.ndarray,
                        X_tgt: np.ndarray,
@@ -375,7 +416,9 @@ def similarity_predict(X_ref: np.ndarray,
                        n_bins: int = 150,
                        q_min: float = 0.0,
                        q_max: float = 0.15,
-                       use_sigma_helper: bool = True
+                       use_sigma_helper: bool = True,
+                       kernel: str = "rbf",
+                       weight_mode: str = "shifted_exp"
                        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Similarity-based prediction on arbitrary target grids.
@@ -440,9 +483,13 @@ def similarity_predict(X_ref: np.ndarray,
             raise ValueError(f"W_t shape {W_t.shape} != target spatial shape {tgt_shape}.")
         W_t_flat = W_t.reshape(n_tgt)
 
+    kernel_mode = _resolve_kernel_mode(kernel)
+    weight_mode_code = _resolve_weight_mode(weight_mode)
+
     q_flat, sig_flat, N_flat, hist_flat = _similarity_predict_core(
         X_ref, X_tgt_flat, H_ref, W_r_flat, W_t_flat, sigma_arr,
-        float(K), hist, int(n_bins), float(q_min), float(q_max)
+        float(K), hist, int(n_bins), float(q_min), float(q_max),
+        kernel_mode, weight_mode_code
     )
 
     q        = q_flat.reshape(tgt_shape)
@@ -451,3 +498,11 @@ def similarity_predict(X_ref: np.ndarray,
     hist_out = hist_flat.reshape(*tgt_shape, n_bins) if hist else hist_flat
 
     return q, std, N, hist_out
+
+
+# v0.2.0 notes:
+# - default kernel is now standard multivariate Gaussian / RBF
+# - default weighting is now shifted exponential: w = W_r * W_t * (K**S - 1)
+# - zero similarity now gives zero weight in default mode
+# - leave-one-out now truly excludes self in default mode
+# - backward-compatible legacy behaviour is available via kernel="additive", weight_mode="legacy_exp"
