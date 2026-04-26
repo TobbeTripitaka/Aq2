@@ -96,7 +96,7 @@ output:
   final_dir:  ./output
   ant_forward_nc:   ant_forward_v0_3.nc
   grl_forward_nc:   grl_forward_v0_3.nc
-  cache_step1_ant:  temp/ant_step1_oversample.nc
-  cache_step2_ant:  temp/ant_step2_volcanic.nc
-  cache_step1_grl:  temp/grl_step1_oversample.nc
-  cache_step2_grl:  temp/grl_step2_volcanic.nc
+  cache_step1_ant:  ant_step1_oversample.nc
+  cache_step2_ant:  ant_step2_volcanic.nc
+  cache_step1_grl:  grl_step1_oversample.nc
+  cache_step2_grl:  grl_step2_volcanic.nc
