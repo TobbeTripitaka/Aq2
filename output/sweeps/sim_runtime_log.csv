@@ -1,0 +1,4 @@
+stage,wall_s,wall_min
+sim_sigma_optuna,4849.195249080658,80.82
+sim_k_sweep,584.4173390865326,9.74
+sim_feature_sens,8738.008384943008,145.63
