@@ -275,7 +275,7 @@ dd = [
  "z_preproc": lambda d: d*1000.0, "interpol_method":"linear",
  "unit":"metre", "v_range":(1_400,7_200),
  "reference":"Szwillus2019",
- "description":"Moho depth uncertainty (Szwillus et al. 2019)"},
+ "description":"Moho depth uncertainty"},
 
 # ── DEM — three grid-keyed variants ──────────────────────────────
 # v_range centred on 0; extent = ceil2(max(|p01|,|p99|)) = 4900 m
@@ -296,7 +296,7 @@ dd = [
      "grid_spacing_m": 5_000,
     "kernel_km":      5.0,  
     "kernel_type":   "uniform",  
- "description":"Antarctic DEM: bed topo + Paxman isostatic adjustment"},
+ "description":"Antarctic DEM: bed topo + isostatic adjustment"},
 
 {"label":"DEM", "grid":"Greenland",
  "import_type":"compute", "func":compute_corrected_dem,
@@ -322,7 +322,7 @@ dd = [
 
 {"label":"DYNAMIC",
  "reference":"10.1029/2025JB031837",
- "description":"Tomography-based thermo-chemical mantle convection (Cui et al 2026)"},
+ "description":"Tomography-based thermo-chemical mantle convection"},
 
 # ── CTD ────────────────────────────────────────────────────────────
 {"label":"CTD",
@@ -331,7 +331,7 @@ dd = [
  "usecols":[0,1,2], "names":["lon","lat","depth"], "header":1,
  "z_preproc": lambda d: -d*1000.0, "interpol_method":"linear",
  "unit":"metre", "v_range":(-52_000,-2_000), "cmap":"cmc.bamako",
- "description":"Curie temperature depth (Gard & Hasterok 2021)"},
+ "description":"Curie temperature depth"},
 
 # ── EMAG2 ──────────────────────────────────────────────────────────
 {"label":"EMAG2_LOG",
@@ -446,7 +446,7 @@ dd = [
  "z_preproc": lambda a: np.where(np.isnan(a), np.nan, a.astype(float)),
  "interpol_method":"nearest",
  "unit":"class", "v_range":(15,3_500), "cmap":"Dark2",
- "description":"TC1 thermal age classification (Artemieva)"},
+ "description":"TC1 thermal age classification"},
 
 {"label":"GPRV",
  "filepath_or_buffer":"../data/global_tectonics-main/plates&provinces/global_gprv_wage.shp",
@@ -473,7 +473,7 @@ dd = [
  "interpol_method":"linear",
  "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
  "description":"Sediment thickness from gravity (GST1)",
- "refrence":"Bird and Mooney, 2026 (10.1016/j.tecto.2026.231175)"},
+ "refrence":"bird2026"},
 
 {
     "label": "SEDIMENT", "grid": "Antarctica",
@@ -483,7 +483,7 @@ dd = [
     "kernel_km": 20.0,
     "kernel_type": "uniform",
     "unit": "log(m+1)", "v_range": (0, 5000), "cmap": "cmc.oslo_r",
-    "description": "sediment thickness, Li2022 likelihood-masked + smoothed (Antarctica)",
+    "description": "Sediment thickness, likelihood-masked + smoothed",
 },
 
 
@@ -524,7 +524,7 @@ dd = [
  "func":compute_volcano_distance,
  "unit":"metre", "v_range":(4_900,220_000), "cmap":"cmc.batlow",
  "sigma":10_000, "weight":1.0,
- "description":"Distance to nearest volcano (NaN beyond 2 deg); diagnostics only."},
+ "description":"Distance to nearest volcano (NaN beyond 2 deg)."},
 
 ]
 

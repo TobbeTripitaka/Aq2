@@ -187,7 +187,12 @@ PARAM_N_RUNS     = 200
 MC_N_RUNS        = 300
 N_OPTUNA_TRIALS  = 200
 CV_FOLDS_SIM     = 5
-SIGMA_BOUNDS     = (0.01, 4.0)
+# Optuna search bounds for per-feature sigma after StandardScaler.
+# After z-score normalisation features live in roughly [-3, +3].
+# sigma=0.25  → neighbourhood half-width ≈ 0.25 std, very sharp
+# sigma=4.0   → neighbourhood half-width ≈ 4 std, very wide / near-flat
+# standardisation to avoid wasting trials on degenerate extremes.
+SIGMA_BOUNDS = (0.25, 4.0)
 K_RANGE          = (2.0, 20.0)
 
 PARAM_GRID = {
