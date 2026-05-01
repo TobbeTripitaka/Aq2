@@ -642,30 +642,39 @@ class Grid:
             return ext, map_crs_obj if use_xy else ccrs.PlateCarree()
         return None, None
 
-    def _apply_gridlines(self, ax, gl_dict, gl_kw, ccrs, use_xy, 
-                         gridlabels = [False, False, False, False]):
+    def _apply_gridlines(self, ax, gldict, glkw, ccrs, usexy,
+                   gridlabels=(False, False, False, False)):
         import matplotlib.ticker as mticker
-        kw = {"linewidth": 0.4, "alpha": 0.5, "color": "gray", "linestyle": "-"}
-        if gl_kw: kw.update(gl_kw)
-        gl = ax.gridlines(crs=ccrs.PlateCarree(), **kw)
-        if "step_x" in gl_dict or "step_y" in gl_dict:
-            gl.xlocator = mticker.FixedLocator(
-                np.arange(-180, 181, gl_dict.get("step_x", 10)))
-            gl.ylocator = mticker.FixedLocator(
-                np.arange(-90, 91, gl_dict.get("step_y", 10)))
-        elif "parallels" in gl_dict and "meridians" in gl_dict:
-            gl.xlocator = mticker.FixedLocator(gl_dict["meridians"])
-            gl.ylocator = mticker.FixedLocator(gl_dict["parallels"])
-        elif "step" in gl_dict:
-            s = gl_dict["step"]
-            gl.xlocator = mticker.FixedLocator(np.arange(-180, 181, s))
-            gl.ylocator = mticker.FixedLocator(np.arange(-90, 91, s))
-        gl.top_labels = gridlabels[0]
-        gl.right_labels = gridlabels[1]
-        gl.left_labels   = gridlabels[2]
-        gl.right_labels  = gridlabels[3]
+        if isinstance(gldict, bool):
+            gldict = {}
+        kw = {'linewidth': 0.4, 'alpha': 0.5, 'color': 'gray',
+            'linestyle': '-', 'zorder': 5}
+        if glkw:
+            kw.update(glkw)
 
-        
+        # Separate zorder — must be set on the Gridliner object directly,
+        # not passed as a line kwarg to ax.gridlines()
+        zorder = kw.pop('zorder', 5)
+        gl = ax.gridlines(crs=ccrs.PlateCarree(), **kw)
+        gl.zorder = zorder                   # ← this is the critical line
+
+        if 'stepx' in gldict or 'stepy' in gldict:
+            gl.xlocator = mticker.FixedLocator(np.arange(-180, 181, gldict.get('stepx', 10)))
+            gl.ylocator = mticker.FixedLocator(np.arange(-90,  91,  gldict.get('stepy', 10)))
+        elif 'parallels' in gldict and 'meridians' in gldict:
+            gl.xlocator = mticker.FixedLocator(gldict['meridians'])
+            gl.ylocator = mticker.FixedLocator(gldict['parallels'])
+        elif 'step' in gldict:
+            s = gldict['step']
+            gl.xlocator = mticker.FixedLocator(np.arange(-180, 181, s))
+            gl.ylocator = mticker.FixedLocator(np.arange(-90,  91,  s))
+
+        gl.top_labels    = gridlabels[0]
+        gl.right_labels  = gridlabels[1]
+        gl.left_labels   = gridlabels[2]
+        gl.bottom_labels = gridlabels[3]
+
+                
 
     # ------------------------------------------------------------------
     # look — single-observable, no cartopy
@@ -907,6 +916,7 @@ class Grid:
             gridlines=None, gridlines_kwargs=None, vector_file=None,
             vector_kwargs=None, vector_crs=None, cbar_ratio=0.1,
             figsize=None, extent=None, dpi=300, no_frame=True,
+            circular = False,
             transparent=True, show=True, return_fig=False,
             save_fig=None, ext_cbar=False, save_cbar=None,
             gridlabels = [False, False, False, False],
@@ -964,6 +974,13 @@ class Grid:
                 ax.patch.set_alpha(0)
             if no_frame and hasattr(ax,"spines") and "geo" in ax.spines:
                 ax.spines["geo"].set_edgecolor("none")
+
+            if circular:
+                theta = np.linspace(0, 2 * np.pi, 200)
+                verts = np.column_stack([0.5 + 0.5 * np.sin(theta),
+                                        0.5 + 0.5 * np.cos(theta)])
+                ax.set_boundary(mpath.Path(verts), transform=ax.transAxes)
+
 
         ext, ecrs = self._resolve_extent(extent, map_crs, map_crs_obj, use_xy, ccrs)
         if ext is not None: ax.set_extent(ext, crs=ecrs)
@@ -1202,6 +1219,8 @@ class Grid:
                     # ---- map features -------------------------------------------
                     title="",
                     coastlines=True,
+                    coastline_color='lightgray',
+                    coastline_linewidth=0.5,
                     continents=False,
                     gridlines=None,
                     gridlines_kwargs=None,
@@ -1211,6 +1230,7 @@ class Grid:
                     vector_crs=None,
                     # ---- figure -------------------------------------------------
                     figsize=None,
+                    circular = False,
                     extent=None,
                     dpi=300,
                     no_frame=True,
@@ -1393,6 +1413,12 @@ class Grid:
                 ax.patch.set_alpha(0)
             if no_frame and hasattr(ax, "spines") and "geo" in ax.spines:
                 ax.spines["geo"].set_edgecolor("none")
+            if circular:
+                theta = np.linspace(0, 2 * np.pi, 200)
+                verts = np.column_stack([0.5 + 0.5 * np.sin(theta),
+                                        0.5 + 0.5 * np.cos(theta)])
+                ax.set_boundary(mpath.Path(verts), transform=ax.transAxes)
+
 
         # ── 4. Extent + basemap features ─────────────────────────────────────
         ext, ecrs = self._resolve_extent(extent, map_crs, map_crs_obj,
@@ -1400,7 +1426,8 @@ class Grid:
         if ext is not None:
             ax.set_extent(ext, crs=ecrs)
         if coastlines:
-            ax.coastlines(zorder = 10)
+            ax.coastlines(zorder = 10, color=coastline_color, 
+                          linewidth=coastline_linewidth)
         if continents:
             ax.add_feature(cfeat.LAND, facecolor="lightgray")
         if gridlines:

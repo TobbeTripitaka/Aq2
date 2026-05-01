@@ -99,7 +99,7 @@ TARGET_GRIDS = [
 # ── Heat-flow thresholds [W/m²] ───────────────────────────────────────────────
 q_min     = 0.0      # 'normal' lowe for statistics and plots
 q_clip_min = 0.001   # hard minimum
-q_max     = 0.200    # 'normal' upper for statistics and plots
+q_max     = 0.140    # 'normal' upper for statistics and plots
 q_clip_max = 0.350   # upper clip applied in 1_Import — used as model ceiling
 
 deep_ocean_threshold     = -5000.0   # DEM threshold for ocean masking [m]
