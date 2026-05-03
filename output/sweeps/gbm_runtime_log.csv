@@ -1,5 +1,0 @@
-stage,wall_s,wall_min
-gbm_optuna,9592.968400239944,159.88
-gbm_ablation_loo,251.86084079742432,4.2
-gbm_mc_subset,3042.1277360916138,50.7
-gbm_greedy_forward,2192.901602745056,36.55
