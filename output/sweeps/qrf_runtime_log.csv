@@ -1,5 +1,0 @@
-stage,wall_s,wall_min
-qrf_param_sweep,9129.829632997513,152.16
-qrf_ablation_loo,1549.9720997810364,25.83
-qrf_mc_subset,17258.206697940826,287.64
-qrf_greedy_forward,13031.165554761887,217.19

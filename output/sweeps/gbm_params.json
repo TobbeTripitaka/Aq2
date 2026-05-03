@@ -1,0 +1,44 @@
+{
+  "model": "GBM",
+  "sweep_notebook": "3b_GBM_SWEEP",
+  "best_cv_r2": 0.3275870832500475,
+  "max_iter": 2000,
+  "early_stopping": true,
+  "validation_fraction": 0.15,
+  "n_iter_no_change": 30,
+  "max_depth": 9,
+  "learning_rate": 0.14740235855688066,
+  "min_samples_leaf": 49,
+  "max_features": 0.8853070604484541,
+  "l2_regularization": 0.4299098165477344,
+  "quantiles": [
+    0.05,
+    0.5,
+    0.95
+  ],
+  "obs_sel": [
+    "REVEAL_S70",
+    "GEOID",
+    "MOHO",
+    "REVEAL_VP50VS80",
+    "REVEAL_S100",
+    "SEDIMENT",
+    "REVEAL_VP60VS70",
+    "SI",
+    "FREE_AIR",
+    "MAG_SEIS_MOHO",
+    "REVEAL_S80",
+    "MOHO_GRAV",
+    "BOUGUER",
+    "LAB"
+  ],
+  "n_optuna_trials": 200,
+  "obs_sel_method": "greedy_forward",
+  "obs_sel_n_feats": 14,
+  "obs_sel_greedy_r2": 0.32294343249082413,
+  "obs_sel_full_r2": 0.31125393754123054,
+  "obs_sel_harmful": [
+    "REVEAL_VP90VS60"
+  ],
+  "obs_sel_rationale": "Greedy forward R\u00b2 peaks at 7 features (0.3206 vs 0.3113 baseline full set). REVEAL_VP90VS60 excluded as ablation-HARMFUL (delta_r2=+0.0050). MC sweep confirms no benefit beyond ~10 features for GBM quantile regression."
+}
