@@ -227,10 +227,12 @@ milli = 1 / 1_000
 micro = 1 / 1_000_000
 km    = 1_000
 
+
 hf_cmap   = "cmc.lajolla"
 hf_v_min  = 15
 hf_v_max  = 180
 hf_unit   = "mW/m²"
+
 unc_cmap  = "cmc.batlow"
 std_cmap  = "cmc.batlow"
 entropy_cmap = "cmc.batlow"
