@@ -1,3 +1,0 @@
-label,r2,rmse_mW,mae_mW,bias_mW,picp,pi_width_mW,shannon_H,nan_frac
-SIM raw,0.4204,34.1924,18.3575,0.4371,,,2.233,0.0
-SIM corrected,0.3138,37.2043,20.1355,-1.7334,,,2.4675,0.0
