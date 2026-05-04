@@ -4,6 +4,14 @@
 # Exclude: all data, large netCDF products, secrets..., caches
 # ============================================================
 
+
+# Exclude for now: 
+7_FORWARD.ipynb
+8_ENSEMBLE.ipynb
+
+
+
+
 todo.txt
 
 # ── Python environment ────────────────────────────────────────────────────
