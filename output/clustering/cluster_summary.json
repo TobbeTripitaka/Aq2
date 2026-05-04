@@ -4,64 +4,64 @@
   "coarsen_factor": 5,
   "native_spacing_m": 5000,
   "target_spacing_m": 25000,
-  "n_features_sel": 22,
+  "n_features_sel": 19,
   "n_features_clust": 21,
   "n_train": 30847,
   "n_cv_folds": 5,
   "cv_thresholds": {
-    "b_mean_cv": 0.013448977530719065,
-    "b_excess_cv": 0.024277967835253777,
-    "b_deficit_cv": 0.008211310920050938,
-    "Rcv25": 0.2761007247106331,
-    "Rcv75": 0.4863452195654954,
-    "A50_cv": 0.0004014258712386627,
-    "E50_cv": 8.070629004932357e-05
+    "b_mean_cv": 0.013485575123494471,
+    "b_excess_cv": 0.024041934900961195,
+    "b_deficit_cv": 0.00795101084821049,
+    "Rcv25": 0.2794181804901806,
+    "Rcv75": 0.49839691418072934,
+    "A50_cv": 0.0004235242635567488,
+    "E50_cv": 8.435805498069718e-05
   },
   "diagnostics": [
     {
       "NCLUSTERS": 2,
-      "Inertia": 461445.6,
+      "Inertia": 461403.9,
       "Silhouette": 0.2704,
-      "Davies_Bouldin": 1.4867,
+      "Davies_Bouldin": 1.4865,
       "Cluster_sizes": [
-        12088,
-        18760
+        12091,
+        18757
       ]
     },
     {
       "NCLUSTERS": 3,
-      "Inertia": 399859.3,
+      "Inertia": 399812.8,
       "Silhouette": 0.2505,
-      "Davies_Bouldin": 1.4705,
+      "Davies_Bouldin": 1.4706,
       "Cluster_sizes": [
-        17090,
-        7816,
+        17083,
+        7823,
         5942
       ]
     },
     {
       "NCLUSTERS": 4,
-      "Inertia": 346985.3,
-      "Silhouette": 0.2214,
-      "Davies_Bouldin": 1.6106,
+      "Inertia": 346901.3,
+      "Silhouette": 0.2215,
+      "Davies_Bouldin": 1.6103,
       "Cluster_sizes": [
-        7641,
-        5676,
-        10415,
-        7116
+        10410,
+        5670,
+        7650,
+        7118
       ]
     },
     {
       "NCLUSTERS": 5,
-      "Inertia": 320789.2,
-      "Silhouette": 0.2147,
-      "Davies_Bouldin": 1.6021,
+      "Inertia": 320734.5,
+      "Silhouette": 0.2148,
+      "Davies_Bouldin": 1.6018,
       "Cluster_sizes": [
-        2776,
-        10390,
-        4046,
-        6470,
-        7166
+        10386,
+        7176,
+        6467,
+        4060,
+        2759
       ]
     }
   ],
