@@ -1,6 +1,6 @@
 # Aq2 / Kq2 — Subglacial Geothermal Heat Flow for Antarctica and Greenland
 
-**Status:** Active development — v2.0 (March 2026)
+**Status:** Active development — v2.1 (May 2026)
 
 ---
 
@@ -8,7 +8,7 @@
 
 This repository contains the full modelling pipeline to produce the Aq2 (Antarctica) and Kq2 (Greenland) subglacial geothermal heat flow datasets. These datasets are intended as boundary conditions for ice sheet models, improving on the earlier Aq1 / Kq1 products by combining three independent methods and applying physics-based forward corrections.
 
-The work builds on the global IHFC heat flow database and a set of ~22 geophysical observables sampled onto 5 km polar stereographic grids, drawing on seismic tomography, crustal structure models, gravity, magnetics, and lithospheric density.
+The work builds on the global IHFC heat flow database and a set of over 20 geophysical observables sampled onto 5 km polar stereographic grids, drawing on seismic tomography, crustal structure models, gravity, magnetics, and lithospheric density.
 
 ---
 
@@ -17,7 +17,7 @@ The work builds on the global IHFC heat flow database and a set of ~22 geophysic
 Three complementary modelling approaches are used in parallel:
 
 ### 1. Gradient Boosting (HistGradientBoostingRegressor)
-A gradient boosted tree model trained with a quantile loss function, providing the best-calibrated point estimates. Three separate models are trained for q₀₅, q₅₀, and q₉₅. Post-hoc isotonic regression calibration is applied on a held-out set.
+A gradient boosted tree model trained with a quantile loss function, providing the best-calibrated point estimates. 
 
 ### 2. Quantile Regression Forest (QRF)
 A random forest trained via the `quantile_forest` library. Predicts the full conditional distribution at any quantile simultaneously, offering robust probabilistic uncertainty estimates. This is the primary model for uncertainty characterisation.
@@ -52,16 +52,16 @@ aq2/
 │   ├── __init__.py
 │   ├── agrid.py            # Grid import library (v0.4.9)
 │   ├── utils.py            # Utility functions (latlon_to_epsg, sort_quantiles)
-│   ├── plotting.py         # Plotting mixin
-│   └── xarray_mixin.py     # xarray mixin
+│   ├── similarity.py
+
 │
 ├── output/
 │   ├── param_sweep/        # Sweep CSV results (tracked in git)
 │   ├── depth_sweep/
 │   ├── feature_sweep/
-│   └── *.nc                # NetCDF products (NOT tracked in git)
+│   └── *.nc                # NetCDF products (NOT tracked in git); external repo to be added 
 │
-├── fig/                    # Figures (NOT yet tracked in git)
+├── fig/                    
 ├── data/                   # Symlink or local copy of data (NOT tracked in git)
 └── temp/                   # Scratch files
 ```
