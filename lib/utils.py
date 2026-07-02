@@ -43,7 +43,96 @@ def sort_quantiles(*arrays):
     return tuple(sorted_[i] for i in range(len(arrays)))
 
 
-import numpy as np
+# ── Model / calibration helpers (shared by 4a/4b/4c) ─────────────────────────
+# These were previously copy-pasted inline into 4a_QRF_MODEL, 4b_GBM_MODEL and
+# 4c_SIM_MODEL. Moved here to remove drift risk. Behaviour is unchanged; the
+# per-notebook constants (q_clip_min/max, bin width, percentile knots) are now
+# passed in explicitly so callers keep full control.
+
+def weighted_percentile(vals, weights, pcts):
+    """Weighted quantile (ignores NaN/inf). pcts are in [0, 100]."""
+    mask = np.isfinite(vals) & np.isfinite(weights)
+    vs, ws = vals[mask], weights[mask]
+    idx  = np.argsort(vs)
+    cumw = np.cumsum(ws[idx]) / ws.sum()
+    return np.interp(pcts / 100.0, cumw, vs[idx])
+
+
+def build_correction_spline(y_pred_cal, y_true_cal, w_cal, n_pctls=200):
+    """
+    PCHIP spline mapping model predictions -> empirical reference distribution.
+    Fitted on calibration slice only (no test leakage).
+    Addresses regression-to-the-mean / centre-of-distribution bias.
+
+    Returns (spline, pred_p, true_p).
+    """
+    from scipy.interpolate import PchipInterpolator
+    pctls      = np.linspace(1, 99, n_pctls)
+    pred_p     = weighted_percentile(y_pred_cal, w_cal, pctls)
+    true_p     = weighted_percentile(y_true_cal, w_cal, pctls)
+    _, keep    = np.unique(pred_p, return_index=True)
+    spline     = PchipInterpolator(pred_p[keep], true_p[keep], extrapolate=True)
+    return spline, pred_p, true_p
+
+
+def empirical_entropy(vals, q_min, q_max, bin_width=0.010):
+    """Shannon entropy (bits/nats per scipy default) of the value histogram."""
+    from scipy.stats import entropy as scipy_entropy
+    bins   = np.arange(q_min, q_max + bin_width, bin_width)
+    counts, _ = np.histogram(vals[np.isfinite(vals)], bins=bins)
+    probs  = counts / counts.sum()
+    return float(scipy_entropy(probs[probs > 0]))
+
+
+def scatter_residuals_fig(rows, suptitle, savepath, q_min, q_max, fig_dpi=150):
+    """
+    rows: list of (y_true, y_raw, y_corr, label, color)
+    3-column figure: uncorrected | corrected | residual overlay
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import r2_score
+    lim  = (q_min * 1e3, q_max * 1e3)
+    bins = np.linspace(lim[0], lim[1], 80)
+    fig, axes = plt.subplots(len(rows), 3, figsize=(18, 5 * len(rows)))
+    if len(rows) == 1: axes = axes[None, :]
+
+    for i, (yt, yraw, ycorr, label, color) in enumerate(rows):
+        yt_mW, yr_mW, yc_mW = yt*1e3, yraw*1e3, ycorr*1e3
+        for j, (yp, cmap, alpha, lbl) in enumerate([
+                (yr_mW, 'Oranges', 0.8, 'uncorr'),
+                (yc_mW, 'Blues',   0.8, 'corr')]):
+            ax = axes[i, j]
+            h, xe, ye = np.histogram2d(yt_mW, yp, bins=bins)
+            h = np.ma.masked_where(h == 0, h)
+            ax.pcolormesh(xe, ye, h.T, cmap=cmap,
+                          norm=plt.matplotlib.colors.LogNorm(),
+                          rasterized=True)
+            ax.plot(lim, lim, 'k--', lw=0.9, label='1:1')
+            r2 = r2_score(yt_mW, yp)
+            ax.set_title(f'{label} — {lbl}  R²={r2:.3f}', fontsize=9)
+            ax.set_xlim(lim); ax.set_ylim(lim)
+            ax.set_xlabel('Observed [mW/m²]'); ax.set_ylabel('Predicted [mW/m²]')
+            ax.legend(fontsize=7)
+
+        ax = axes[i, 2]
+        rr = yr_mW - yt_mW
+        rc = yc_mW - yt_mW
+        ax.hist(rr, bins=60, color='#FF9800', alpha=0.5, edgecolor='none',
+                label=f'uncorr  bias={np.mean(rr):.1f} σ={np.std(rr):.1f}')
+        ax.hist(rc, bins=60, color=color, alpha=0.65, edgecolor='none',
+                label=f'corr    bias={np.mean(rc):.1f} σ={np.std(rc):.1f}')
+        ax.axvline(0, color='k', lw=0.9)
+        ax.set_xlabel('Residual [mW/m²]'); ax.set_ylabel('Count')
+        ax.set_xlim(-200, 200); ax.set_title(f'{label} — residuals', fontsize=9)
+        ax.legend(fontsize=7)
+
+    fig.suptitle(suptitle, fontsize=12, y=1.01)
+    fig.tight_layout()
+    fig.savefig(savepath, dpi=fig_dpi, bbox_inches='tight')
+    plt.show()
+    print(f'Saved {savepath}')
+
+
 import pyproj
 import xarray as xr
 from lib.agrid import Grid  # adjust import to your package

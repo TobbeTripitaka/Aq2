@@ -21,6 +21,24 @@
 
 # Currently grid-keyed: DEM (3 variants) and SEDIMENT (3 variants).
 # All other observables are shared.
+#
+# ``dd`` entry schema (keys read by lib/agrid.py)
+# -----------------------------------------------
+#   label            (required) column name written to the parquet catalogue.
+#   import_type      (required) dispatch key for _read_data:
+#                    "read_raster" | "read_ascii" | "read_grid" |
+#                    "read_shape" | "compute".
+#   grid             (optional) str or list of grid names ("IHFC",
+#                    "Antarctica", "Greenland"). Entry imported only by the
+#                    matching Grid(s); absent => shared across all grids.
+#   filepath_or_buffer (source-file entries) path to the data file.
+#   func             (compute entries) callable(self, d) returning a 1-D array.
+#   depends_on       (compute entries) list of labels that must exist first.
+#   interpol_method  interpolation for point/grid readers ("linear"/"nearest").
+#   x_preproc/z_preproc  optional callables applied to coord/value arrays.
+#   unit, v_range, cmap  metadata used by plotting/statistics.
+#   reference        (optional) short citation tag for the source dataset.
+#   exclude_from_obs (optional) True => label is kept out of the obs catalogue.
 # ============================================================================
 
 import numpy as np
@@ -473,7 +491,7 @@ dd = [
  "interpol_method":"linear",
  "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
  "description":"Sediment thickness from gravity (GST1)",
- "refrence":"bird2026"},
+ "reference":"bird2026"},
 
 {
     "label": "SEDIMENT", "grid": "Antarctica",
@@ -524,7 +542,7 @@ dd = [
  "func":compute_volcano_distance,
  "unit":"metre", "v_range":(4_900,220_000), "cmap":"cmc.batlow",
  "sigma":10_000, "weight":1.0,
- "description":"Distance to nearest volcano (NaN beyond 2 deg)."},
+ "description":"Distance to nearest volcano (NaN beyond 100 km)."},
 
 ]
 

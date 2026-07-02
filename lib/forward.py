@@ -65,19 +65,27 @@ def load_empirical_grid(
     region: str,
     chunks: Optional[dict] = None,
 ) -> xr.Dataset:
-    """Load the 5 km empirical QRF NetCDF and return with canonical variable names."""
+    """Load a 5 km empirical NetCDF (QRF/GBM/SIM) and return canonical variable names.
+
+    Method-agnostic: accepts any of the ``qrf_``/``gbm_``/``sim_`` prefixed
+    canonical outputs written by stage 5 and maps them onto the internal
+    ``q_q05 … q_q95`` / ``q_std`` names used by the forward model. Only one
+    method's grid is loaded per call, so the combined map has no key clashes.
+    """
     _print_step(f"Loading empirical 5 km grid — {region}")
     ds = xr.open_dataset(nc_path, chunks=chunks or {})
-    rename = {
-        "qrf_q05_corr":  "q_q05",
-        "qrf_q25_corr":  "q_q25",
-        "qrf_q50_corr":  "q_q50",
-        "qrf_q75_corr":  "q_q75",
-        "qrf_q95_corr":  "q_q95",
-        "qrf_sigma_corr": "q_std",
-        "qrf_iqr50_corr": "q_iqr50",
-        "qrf_iqr90_corr": "q_iqr90",
-    }
+    rename = {}
+    for m in ("qrf", "gbm", "sim"):
+        rename.update({
+            f"{m}_q05_corr": "q_q05",
+            f"{m}_q25_corr": "q_q25",
+            f"{m}_q50_corr": "q_q50",
+            f"{m}_q75_corr": "q_q75",
+            f"{m}_q95_corr": "q_q95",
+            f"{m}_std_corr": "q_std",
+            f"{m}_iqr50_corr": "q_iqr50",
+            f"{m}_iqr90_corr": "q_iqr90",
+        })
     ds = ds.rename({k: v for k, v in rename.items() if k in ds})
     if "q_mean" not in ds and "q_q50" in ds:
         ds = ds.assign(q_mean=ds["q_q50"].assign_attrs(

@@ -1,5 +1,5 @@
 # =============================================================================
-# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v0.2)
+# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v4.0)
 # =============================================================================
 
 from pathlib import Path
@@ -97,7 +97,7 @@ TARGET_GRIDS = [
 ]
 
 # ── Heat-flow thresholds [W/m²] ───────────────────────────────────────────────
-q_min     = 0.0      # 'normal' lowe for statistics and plots
+q_min     = 0.0      # 'normal' lower for statistics and plots
 q_clip_min = 0.001   # hard minimum
 q_max     = 0.140    # 'normal' upper for statistics and plots
 q_clip_max = 0.350   # upper clip applied in 1_Import — used as model ceiling
@@ -192,7 +192,11 @@ CV_FOLDS_SIM     = 5
 # sigma=0.25  → neighbourhood half-width ≈ 0.25 std, very sharp
 # sigma=4.0   → neighbourhood half-width ≈ 4 std, very wide / near-flat
 # standardisation to avoid wasting trials on degenerate extremes.
-SIGMA_BOUNDS = (0.25, 4.0)
+# SIM_SIGMA_BOUNDS is the single source of truth for the similarity per-feature
+# sigma search range; 3c reads it from here and records the bounds it used in
+# sim_best_params.json. SIGMA_BOUNDS is retained as an alias for back-compat.
+SIM_SIGMA_BOUNDS = (0.25, 4.0)
+SIGMA_BOUNDS = SIM_SIGMA_BOUNDS
 K_RANGE          = (2.0, 20.0)
 
 PARAM_GRID = {

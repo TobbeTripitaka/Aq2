@@ -27,7 +27,7 @@ def compute_uncertainty_summary(ds: xr.Dataset) -> xr.Dataset:
     Adds / updates:
         q_std          Gaussian-equivalent sigma from 90% CI
         q_iqr          q75 - q25
-        q_cv           coefficient of variation = q_std / q_mean  (clipped 0-10)
+        q_cv           coefficient of variation = q_std / q50  (clipped 0-10)
         q_ci90_lower   q05
         q_ci90_upper   q95
     """
@@ -51,7 +51,7 @@ def compute_uncertainty_summary(ds: xr.Dataset) -> xr.Dataset:
         "q_iqr": q_iqr.assign_attrs(
             units="W m-2", long_name="Interquartile range q75-q25"),
         "q_cv": q_cv.assign_attrs(
-            units="dimensionless", long_name="Coefficient of variation q_std/q_mean"),
+            units="dimensionless", long_name="Coefficient of variation q_std/q50"),
         "q_ci90_lower": q05.assign_attrs(
             units="W m-2", long_name="Lower bound 90% CI (q05)"),
         "q_ci90_upper": q95.assign_attrs(

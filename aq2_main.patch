@@ -1,0 +1,1508 @@
+diff --git a/2_OBSERVABLES.ipynb b/2_OBSERVABLES.ipynb
+index f601998..7cb6210 100644
+--- a/2_OBSERVABLES.ipynb
++++ b/2_OBSERVABLES.ipynb
+@@ -107,7 +107,8 @@
+     }
+    ],
+    "source": [
+-    "df_check = pd.read_parquet('data/IHFC_obs.parquet', columns=obs_model + ['q'])\n",
++    "df_check = pd.read_parquet(parquet_ref, columns=obs_model + ['q'])\n",
++
+     "missing  = [c for c in obs_model if c not in df_check.columns]\n",
+     "all_nan  = [c for c in obs_model if df_check[c].isna().all()]\n",
+     "assert not missing,  f'MISSING from parquet: {missing}'\n",
+diff --git a/3a_QRF_SWEEP.ipynb b/3a_QRF_SWEEP.ipynb
+index b3f67df..430daa3 100644
+--- a/3a_QRF_SWEEP.ipynb
++++ b/3a_QRF_SWEEP.ipynb
+@@ -147,7 +147,11 @@
+     }
+    ],
+    "source": [
+-    "obs_sel = obs_sweep  # NOTE: adjust here to test a different feature universe\n",
++    "# obs_sel here = the CANDIDATE feature universe fed into the sweep (edit to test a\n",
++    "# different universe). The FINAL selected subset is written to the sweep JSON under\n",
++    "# the 'obs_sel' key and is what 4x/5x load — this line does not set the final list.\n",
++    "obs_sel = obs_sweep\n",
++
+     "\n",
+     "df_ref    = pd.read_parquet(parquet_ref)\n",
+     "available = [f for f in obs_sel if f in df_ref.columns]\n",
+diff --git a/3b_GBM_SWEEP.ipynb b/3b_GBM_SWEEP.ipynb
+index cf80148..e2ae1fb 100644
+--- a/3b_GBM_SWEEP.ipynb
++++ b/3b_GBM_SWEEP.ipynb
+@@ -22,6 +22,37 @@
+     "**Optuna search space:**  `max_iter` [100–800 step 50],  `max_depth` [3–10],  `learning_rate` [0.01–0.30 log],  `min_samples_leaf` [5–60],  `max_features` [0.3–1.0],  `l2_regularization` [0–5].  Warm-started from `config.py` defaults."
+    ]
+   },
++  {
++   "cell_type": "markdown",
++   "id": "0eebe40b",
++   "metadata": {},
++   "source": [
++    "## 0. Toggles"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 14,
++   "id": "18985e38",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "RUN_GBM_OPTUNA    = True\n",
++    "RUN_GBM_ABLATION  = True\n",
++    "RUN_GBM_MC        = True\n",
++    "RUN_GBM_GREEDY    = True\n",
++    "\n",
++    "GBM_N_OPTUNA_TRIALS = N_OPTUNA_TRIALS\n",
++    "GBM_CALIBRATION_FRAC = 0.20\n",
++    "GBM_MC_N_RUNS       = MC_N_RUNS\n",
++    "GBM_MC_MIN_FEATS    = 5\n",
++    "GBM_MC_MAX_FEATS    = None\n",
++    "GBM_RANDOM_SEED     = 2026\n",
++    "GBM_MC_SEED         = 2025\n",
++    "GBM_GREEDY_SEED     = 2025\n",
++    "GBM_QUANTILES       = [0.05, 0.50, 0.95]\n"
++   ]
++  },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+@@ -71,37 +102,6 @@
+     "from sklearn.ensemble import HistGradientBoostingRegressor\n"
+    ]
+   },
+-  {
+-   "cell_type": "markdown",
+-   "id": "0eebe40b",
+-   "metadata": {},
+-   "source": [
+-    "## 0. Toggles"
+-   ]
+-  },
+-  {
+-   "cell_type": "code",
+-   "execution_count": 14,
+-   "id": "18985e38",
+-   "metadata": {},
+-   "outputs": [],
+-   "source": [
+-    "RUN_GBM_OPTUNA    = True\n",
+-    "RUN_GBM_ABLATION  = True\n",
+-    "RUN_GBM_MC        = True\n",
+-    "RUN_GBM_GREEDY    = True\n",
+-    "\n",
+-    "GBM_N_OPTUNA_TRIALS = N_OPTUNA_TRIALS\n",
+-    "GBM_CALIBRATION_FRAC = 0.20\n",
+-    "GBM_MC_N_RUNS       = MC_N_RUNS\n",
+-    "GBM_MC_MIN_FEATS    = 5\n",
+-    "GBM_MC_MAX_FEATS    = None\n",
+-    "GBM_RANDOM_SEED     = 2026\n",
+-    "GBM_MC_SEED         = 2025\n",
+-    "GBM_GREEDY_SEED     = 2025\n",
+-    "GBM_QUANTILES       = [0.05, 0.50, 0.95]\n"
+-   ]
+-  },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+@@ -154,7 +154,11 @@
+     }
+    ],
+    "source": [
+-    "obs_sel = obs_sweep  # NOTE: adjust here to test a different feature universe\n",
++    "# obs_sel here = the CANDIDATE feature universe fed into the sweep (edit to test a\n",
++    "# different universe). The FINAL selected subset is written to the sweep JSON under\n",
++    "# the 'obs_sel' key and is what 4x/5x load — this line does not set the final list.\n",
++    "obs_sel = obs_sweep\n",
++
+     "\n",
+     "df_ref    = pd.read_parquet(parquet_ref)\n",
+     "available = [f for f in obs_sel if f in df_ref.columns]\n",
+@@ -774,9 +778,12 @@
+     "#  MC sweep       : R² is roughly flat for 10–16 features with high variance,\n",
+     "#                   confirming no benefit from expanding beyond the greedy set.\n",
+     "#\n",
+-    "# Final obs_sel = greedy step-7 set minus any HARMFUL features (none present).\n",
++    "# obs_sel_final: greedy step-7 set minus any HARMFUL features (none present).\n",
++    "# Manual selection recorded explicitly below — edit this list to override\n",
++    "# (e.g. obs_sel_final = ['FEATURE_A', 'FEATURE_B', ...]).\n",
+     "\n",
+-    "obs_sel_gbm = [\n",
++    "obs_sel_final = [\n",
++
+     "    'REVEAL_S70',       # step 1\n",
+     "    'GEOID',            # step 2\n",
+     "    'MOHO',             # step 3\n",
+@@ -794,9 +801,11 @@
+     "]\n",
+     "\n",
+     "# Verify all selected features exist in the parquet\n",
+-    "missing_sel = [f for f in obs_sel_gbm if f not in available]\n",
++    "missing_sel = [f for f in obs_sel_final if f not in available]\n",
++
+     "assert not missing_sel, f'Selected features missing from parquet: {missing_sel}'\n",
+-    "print(f'obs_sel_gbm: {len(obs_sel_gbm)} features — all present in parquet ✓')\n",
++    "print(f'obs_sel_final: {len(obs_sel_final)} features — all present in parquet ✓')\n",
++
+     "\n",
+     "# ── Load existing params, update obs_sel, re-save ───────────────────────────\n",
+     "import json\n",
+@@ -804,11 +813,14 @@
+     "with open(param_paths['gbm'], 'r') as fh:\n",
+     "    gbm_params_out = json.load(fh)\n",
+     "\n",
+-    "gbm_params_out['obs_sel']              = obs_sel_gbm\n",
++    "gbm_params_out['obs_sel']              = obs_sel_final\n",
++
+     "gbm_params_out['obs_sel_method']       = 'greedy_forward'\n",
+-    "gbm_params_out['obs_sel_n_feats']      = len(obs_sel_gbm)\n",
++    "gbm_params_out['obs_sel_n_feats']      = len(obs_sel_final)\n",
++
+     "gbm_params_out['obs_sel_greedy_r2']    = float(\n",
+-    "    gbm_greedy_df.loc[gbm_greedy_df['n_feats'] == len(obs_sel_gbm), 'r2'].iloc[0])\n",
++    "    gbm_greedy_df.loc[gbm_greedy_df['n_feats'] == len(obs_sel_final), 'r2'].iloc[0])\n",
++
+     "gbm_params_out['obs_sel_full_r2']      = float(gbm_base_r2)\n",
+     "gbm_params_out['obs_sel_harmful']      = ['REVEAL_VP90VS60']\n",
+     "gbm_params_out['obs_sel_rationale']    = (\n",
+@@ -821,7 +833,8 @@
+     "    json.dump(gbm_params_out, fh, indent=2)\n",
+     "\n",
+     "print(f'Updated {param_paths[\"gbm\"]}')\n",
+-    "print(f'  obs_sel       : {obs_sel_gbm}')\n",
++    "print(f'  obs_sel       : {obs_sel_final}')\n",
++
+     "print(f'  greedy R²     : {gbm_params_out[\"obs_sel_greedy_r2\"]:.4f}')\n",
+     "print(f'  baseline R²   : {gbm_params_out[\"obs_sel_full_r2\"]:.4f}')\n",
+     "print(f'  harmful feats : {gbm_params_out[\"obs_sel_harmful\"]}')"
+diff --git a/3c_SIM_SWEEP.ipynb b/3c_SIM_SWEEP.ipynb
+index 2ebc923..86cd7ab 100644
+--- a/3c_SIM_SWEEP.ipynb
++++ b/3c_SIM_SWEEP.ipynb
+@@ -150,7 +150,11 @@
+     }
+    ],
+    "source": [
+-    "obs_sel = obs_sweep  # NOTE: adjust here to test a different feature universe\n",
++    "# obs_sel here = the CANDIDATE feature universe fed into the sweep (edit to test a\n",
++    "# different universe). The FINAL selected subset is written to the sweep JSON under\n",
++    "# the 'obs_sel' key and is what 4x/5x load — this line does not set the final list.\n",
++    "obs_sel = obs_sweep\n",
++
+     "\n",
+     "df_ref    = pd.read_parquet(parquet_ref)\n",
+     "available = [f for f in obs_sel if f in df_ref.columns]\n",
+@@ -728,6 +732,23 @@
+     "    SIM_SIGMAS       = {f: float(best_joint_sigmas[f]) for f in obs_sel_final},\n",
+     "    SIM_KERNEL       = SIM_KERNEL,\n",
+     "    SIM_WEIGHT_MODE  = SIM_WEIGHT_MODE,\n",
++    "    OOD_WORST        = {\n",
++    "        'BOUGUER':         0.476,\n",
++    "        'REVEAL_VP60VS70': 0.451,\n",
++    "        'REVEAL_S80':      0.340,\n",
++    "        'DEM':             0.307,\n",
++    "        'REVEAL_VP90VS60': 0.315,\n",
++    "        'REVEAL_VP50VS80': 0.306,\n",
++    "        'REVEAL_S90':      0.301,\n",
++    "        'GEOID':           0.293,\n",
++    "        'LAB':             0.266,\n",
++    "        'MOHO_GRAV':       0.218,\n",
++    "        'REVEAL_S70':      0.226,\n",
++    "        'LITH_RHO':        0.214,\n",
++    "        'CTD':             0.201,\n",
++    "    },\n",
++    "    SIGMA_FLOOR_MIN  = 0.5,\n",
++
+     "    standardisation  = 'StandardScaler per CV fold (train fold only)',\n",
+     "    obs_sel          = obs_sel_final,\n",
+     "    obs_model        = obs_model,\n",
+@@ -735,7 +756,9 @@
+     "    cv_r2_selected   = float(r2_final),\n",
+     "    cv_r2_joint_best = float(best_joint_r2),\n",
+     "    K_joint_bounds   = [K_JOINT_LO, K_JOINT_HI],\n",
++    "    SIM_SIGMA_BOUNDS = list(SIGMA_BOUNDS),  # per-feature sigma search range used (config.SIM_SIGMA_BOUNDS)\n",
+     "    n_optuna_trials  = N_OPTUNA_JOINT,\n",
++
+     ")\n",
+     "\n",
+     "with open(sim_json, 'w') as fp:\n",
+diff --git a/4a_QRF_MODEL.ipynb b/4a_QRF_MODEL.ipynb
+index b685c21..8db26ce 100644
+--- a/4a_QRF_MODEL.ipynb
++++ b/4a_QRF_MODEL.ipynb
+@@ -180,8 +180,10 @@
+     "with open(param_dir / 'qrf_params.json') as fp:\n",
+     "    PARAMS = json.load(fp)\n",
+     "\n",
+-    "# obs_sel: use features stored in JSON (from sweep), fall back to obs_model\n",
+-    "obs_sel = PARAMS.get('obs_sel', obs_model)\n",
++    "# obs_sel: exactly the feature list recorded in the sweep JSON (single source of truth)\n",
++    "obs_sel = PARAMS['obs_sel']\n",
++    "assert isinstance(obs_sel, list) and obs_sel, 'obs_sel missing/empty in sweep JSON'\n",
++
+     "print(f'Loaded qrf_params.json')\n",
+     "print(f'  obs_sel ({len(obs_sel)} features): {obs_sel}')\n",
+     "print(f'  n_estimators     : {PARAMS[\"n_estimators\"]}')\n",
+@@ -398,28 +400,10 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "def weighted_percentile(vals, weights, pcts):\n",
+-    "    \"\"\"Weighted quantile (ignores NaN/inf).\"\"\"\n",
+-    "    mask = np.isfinite(vals) & np.isfinite(weights)\n",
+-    "    vs, ws = vals[mask], weights[mask]\n",
+-    "    idx  = np.argsort(vs)\n",
+-    "    cumw = np.cumsum(ws[idx]) / ws.sum()\n",
+-    "    return np.interp(pcts / 100.0, cumw, vs[idx])\n",
+-    "\n",
+-    "def build_correction_spline(y_pred_cal, y_true_cal, w_cal, n_pctls=SPLINE_PCTLS):\n",
+-    "    \"\"\"\n",
+-    "    PCHIP spline mapping model predictions → empirical reference distribution.\n",
+-    "    Fitted on calibration slice only (no test leakage).\n",
+-    "    Addresses regression-to-the-mean / centre-of-distribution bias.\n",
+-    "    \"\"\"\n",
+-    "    pctls      = np.linspace(1, 99, n_pctls)\n",
+-    "    pred_p     = weighted_percentile(y_pred_cal, w_cal, pctls)\n",
+-    "    true_p     = weighted_percentile(y_true_cal, w_cal, pctls)\n",
+-    "    _, keep    = np.unique(pred_p, return_index=True)\n",
+-    "    spline     = PchipInterpolator(pred_p[keep], true_p[keep], extrapolate=True)\n",
+-    "    return spline, pred_p, true_p\n",
++    "from lib.utils import weighted_percentile, build_correction_spline\n",
+     "\n",
+     "def apply_spline(vals, spline):\n",
++
+     "    out    = np.full_like(vals, np.nan, dtype=np.float32)\n",
+     "    ok     = np.isfinite(vals)\n",
+     "    out[ok] = np.clip(spline(vals[ok]).astype(np.float32), Q_CLIP_MIN, q_clip_max)\n",
+@@ -488,11 +472,10 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
++    "from lib.utils import empirical_entropy as _empirical_entropy\n",
+     "def empirical_entropy(vals, bin_width=HIST_BIN_W):\n",
+-    "    bins   = np.arange(Q_CLIP_MIN, q_clip_max + bin_width, bin_width)\n",
+-    "    counts, _ = np.histogram(vals[np.isfinite(vals)], bins=bins)\n",
+-    "    probs  = counts / counts.sum()\n",
+-    "    return float(scipy_entropy(probs[probs > 0]))\n",
++    "    return _empirical_entropy(vals, Q_CLIP_MIN, q_clip_max, bin_width)\n",
++
+     "\n",
+     "def mean_bias(y_true, y_pred):\n",
+     "    valid = np.isfinite(y_pred) & np.isfinite(y_true)\n",
+@@ -556,51 +539,9 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
++    "from lib.utils import scatter_residuals_fig as _scatter_residuals_fig\n",
+     "def scatter_residuals_fig(rows, suptitle, savepath):\n",
+-    "    \"\"\"\n",
+-    "    rows: list of (y_true, y_raw, y_corr, label, color)\n",
+-    "    3-column figure: uncorrected | corrected | residual overlay\n",
+-    "    \"\"\"\n",
+-    "    lim  = (Q_CLIP_MIN * 1e3, q_clip_max * 1e3)\n",
+-    "    bins = np.linspace(lim[0], lim[1], 80)\n",
+-    "    fig, axes = plt.subplots(len(rows), 3, figsize=(18, 5 * len(rows)))\n",
+-    "    if len(rows) == 1: axes = axes[None, :]\n",
+-    "\n",
+-    "    for i, (yt, yraw, ycorr, label, color) in enumerate(rows):\n",
+-    "        yt_mW, yr_mW, yc_mW = yt*1e3, yraw*1e3, ycorr*1e3\n",
+-    "        for j, (yp, cmap, alpha, lbl) in enumerate([\n",
+-    "                (yr_mW, 'Oranges', 0.8, 'uncorr'),\n",
+-    "                (yc_mW, 'Blues',   0.8, 'corr')]):\n",
+-    "            ax = axes[i, j]\n",
+-    "            h, xe, ye = np.histogram2d(yt_mW, yp, bins=bins)\n",
+-    "            h = np.ma.masked_where(h == 0, h)\n",
+-    "            ax.pcolormesh(xe, ye, h.T, cmap=cmap,\n",
+-    "                          norm=plt.matplotlib.colors.LogNorm(),\n",
+-    "                          rasterized=True)\n",
+-    "            ax.plot(lim, lim, 'k--', lw=0.9, label='1:1')\n",
+-    "            r2 = r2_score(yt_mW, yp)\n",
+-    "            ax.set_title(f'{label} — {lbl}  R²={r2:.3f}', fontsize=9)\n",
+-    "            ax.set_xlim(lim); ax.set_ylim(lim)\n",
+-    "            ax.set_xlabel('Observed [mW/m²]'); ax.set_ylabel('Predicted [mW/m²]')\n",
+-    "            ax.legend(fontsize=7)\n",
+-    "\n",
+-    "        ax = axes[i, 2]\n",
+-    "        rr = yr_mW - yt_mW\n",
+-    "        rc = yc_mW - yt_mW\n",
+-    "        ax.hist(rr, bins=60, color='#FF9800', alpha=0.5, edgecolor='none',\n",
+-    "                label=f'uncorr  bias={np.mean(rr):.1f} σ={np.std(rr):.1f}')\n",
+-    "        ax.hist(rc, bins=60, color=color, alpha=0.65, edgecolor='none',\n",
+-    "                label=f'corr    bias={np.mean(rc):.1f} σ={np.std(rc):.1f}')\n",
+-    "        ax.axvline(0, color='k', lw=0.9)\n",
+-    "        ax.set_xlabel('Residual [mW/m²]'); ax.set_ylabel('Count')\n",
+-    "        ax.set_xlim(-200, 200); ax.set_title(f'{label} — residuals', fontsize=9)\n",
+-    "        ax.legend(fontsize=7)\n",
+-    "\n",
+-    "    fig.suptitle(suptitle, fontsize=12, y=1.01)\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(savepath, dpi=FIG_DPI, bbox_inches='tight')\n",
+-    "    plt.show()\n",
+-    "    print(f'Saved {savepath}')\n",
++    "    return _scatter_residuals_fig(rows, suptitle, savepath, Q_CLIP_MIN, q_clip_max, FIG_DPI)\n",
+     "\n",
+     "print('Figure helper defined.')\n"
+    ]
+@@ -651,11 +592,11 @@
+     "    _qp = json.load(f)\n",
+     "\n",
+     "artefacts = dict(\n",
+-    "    model           = 'QRF',\n",
++    "    model           = qrf,           # QRF estimator (canonical key 'model')\n",
+     "    obs_sel         = obs_sel,\n",
+     "    scaler          = scaler,\n",
+-    "    qrf             = qrf,\n",
+-    "    qrf_spline      = qrf_spline,\n",
++    "    spline          = qrf_spline,    # canonical key 'spline'\n",
++
+     "    qhat_qrf        = float(qhat_qrf),\n",
+     "    QUANTILES       = QUANTILES,\n",
+     "    Q_CLIP_MIN      = float(Q_CLIP_MIN),\n",
+diff --git a/4b_GBM_MODEL.ipynb b/4b_GBM_MODEL.ipynb
+index 55d3285..71228f6 100644
+--- a/4b_GBM_MODEL.ipynb
++++ b/4b_GBM_MODEL.ipynb
+@@ -1,5 +1,18 @@
+ {
+  "cells": [
++  {
++   "cell_type": "markdown",
++   "id": "4b000001",
++   "metadata": {},
++   "source": [
++    "# 4b_GBM_MODEL — GBM Training & Artefact Export\n",
++    "\n",
++    "Trains (or loads) the **Gradient Boosted quantile** models using optimised\n",
++    "hyperparameters from `gbm_params.json`, applies conformal calibration and a\n",
++    "PCHIP centre-bias correction spline, then bundles all artefacts to\n",
++    "`gbm_artefacts.pkl` for `5b_GBM_TARGETS`."
++   ]
++  },
+   {
+    "cell_type": "markdown",
+    "id": "00000000",
+@@ -143,7 +156,9 @@
+     "\n",
+     "with open(param_paths['gbm'], 'r') as fh:\n",
+     "    PARAMS = json.load(fh)\n",
+-    "obs_sel = PARAMS.get('obs_sel', obs_model)\n",
++    "obs_sel = PARAMS['obs_sel']\n",
++    "assert isinstance(obs_sel, list) and obs_sel, 'obs_sel missing/empty in sweep JSON'\n",
++
+     "print(f'Using {len(obs_sel)} features from gbm_params.json: {obs_sel}')\n",
+     "\n",
+     "\n",
+@@ -335,26 +350,7 @@
+     }
+    ],
+    "source": [
+-    "def weighted_percentile(vals, weights, pcts):\n",
+-    "    \"\"\"Weighted quantile (ignores NaN/inf).\"\"\"\n",
+-    "    mask = np.isfinite(vals) & np.isfinite(weights)\n",
+-    "    vs, ws = vals[mask], weights[mask]\n",
+-    "    idx  = np.argsort(vs)\n",
+-    "    cumw = np.cumsum(ws[idx]) / ws.sum()\n",
+-    "    return np.interp(pcts / 100.0, cumw, vs[idx])\n",
+-    "\n",
+-    "def build_correction_spline(y_pred_cal, y_true_cal, w_cal, n_pctls=SPLINE_PCTLS):\n",
+-    "    \"\"\"\n",
+-    "    PCHIP spline mapping model predictions → empirical reference distribution.\n",
+-    "    Fitted on calibration slice only (no test leakage).\n",
+-    "    Addresses regression-to-the-mean / centre-of-distribution bias.\n",
+-    "    \"\"\"\n",
+-    "    pctls      = np.linspace(1, 99, n_pctls)\n",
+-    "    pred_p     = weighted_percentile(y_pred_cal, w_cal, pctls)\n",
+-    "    true_p     = weighted_percentile(y_true_cal, w_cal, pctls)\n",
+-    "    _, keep    = np.unique(pred_p, return_index=True)\n",
+-    "    spline     = PchipInterpolator(pred_p[keep], true_p[keep], extrapolate=True)\n",
+-    "    return spline, pred_p, true_p\n",
++    "from lib.utils import weighted_percentile, build_correction_spline\n",
+     "\n",
+     "def apply_spline(vals, spline):\n",
+     "    out    = np.full_like(vals, np.nan, dtype=np.float32)\n",
+@@ -447,11 +443,9 @@
+     }
+    ],
+    "source": [
++    "from lib.utils import empirical_entropy as _empirical_entropy\n",
+     "def empirical_entropy(vals, bin_width=HIST_BIN_W):\n",
+-    "    bins   = np.arange(q_clip_min, q_clip_max + bin_width, bin_width)\n",
+-    "    counts, _ = np.histogram(vals[np.isfinite(vals)], bins=bins)\n",
+-    "    probs  = counts / counts.sum()\n",
+-    "    return float(scipy_entropy(probs[probs > 0]))\n",
++    "    return _empirical_entropy(vals, q_clip_min, q_clip_max, bin_width)\n",
+     "\n",
+     "def mean_bias(y_true, y_pred):\n",
+     "    valid = np.isfinite(y_pred) & np.isfinite(y_true)\n",
+@@ -535,51 +529,9 @@
+     }
+    ],
+    "source": [
++    "from lib.utils import scatter_residuals_fig as _scatter_residuals_fig\n",
+     "def scatter_residuals_fig(rows, suptitle, savepath):\n",
+-    "    \"\"\"\n",
+-    "    rows: list of (y_true, y_raw, y_corr, label, color)\n",
+-    "    3-column figure: uncorrected | corrected | residual overlay\n",
+-    "    \"\"\"\n",
+-    "    lim  = (q_clip_min * 1e3, q_clip_max * 1e3)\n",
+-    "    bins = np.linspace(lim[0], lim[1], 80)\n",
+-    "    fig, axes = plt.subplots(len(rows), 3, figsize=(18, 5 * len(rows)))\n",
+-    "    if len(rows) == 1: axes = axes[None, :]\n",
+-    "\n",
+-    "    for i, (yt, yraw, ycorr, label, color) in enumerate(rows):\n",
+-    "        yt_mW, yr_mW, yc_mW = yt*1e3, yraw*1e3, ycorr*1e3\n",
+-    "        for j, (yp, cmap, alpha, lbl) in enumerate([\n",
+-    "                (yr_mW, 'Oranges', 0.8, 'uncorr'),\n",
+-    "                (yc_mW, 'Blues',   0.8, 'corr')]):\n",
+-    "            ax = axes[i, j]\n",
+-    "            h, xe, ye = np.histogram2d(yt_mW, yp, bins=bins)\n",
+-    "            h = np.ma.masked_where(h == 0, h)\n",
+-    "            ax.pcolormesh(xe, ye, h.T, cmap=cmap,\n",
+-    "                          norm=plt.matplotlib.colors.LogNorm(),\n",
+-    "                          rasterized=True)\n",
+-    "            ax.plot(lim, lim, 'k--', lw=0.9, label='1:1')\n",
+-    "            r2 = r2_score(yt_mW, yp)\n",
+-    "            ax.set_title(f'{label} — {lbl}  R²={r2:.3f}', fontsize=9)\n",
+-    "            ax.set_xlim(lim); ax.set_ylim(lim)\n",
+-    "            ax.set_xlabel('Observed [mW/m²]'); ax.set_ylabel('Predicted [mW/m²]')\n",
+-    "            ax.legend(fontsize=7)\n",
+-    "\n",
+-    "        ax = axes[i, 2]\n",
+-    "        rr = yr_mW - yt_mW\n",
+-    "        rc = yc_mW - yt_mW\n",
+-    "        ax.hist(rr, bins=60, color='#FF9800', alpha=0.5, edgecolor='none',\n",
+-    "                label=f'uncorr  bias={np.mean(rr):.1f} σ={np.std(rr):.1f}')\n",
+-    "        ax.hist(rc, bins=60, color=color, alpha=0.65, edgecolor='none',\n",
+-    "                label=f'corr    bias={np.mean(rc):.1f} σ={np.std(rc):.1f}')\n",
+-    "        ax.axvline(0, color='k', lw=0.9)\n",
+-    "        ax.set_xlabel('Residual [mW/m²]'); ax.set_ylabel('Count')\n",
+-    "        ax.set_xlim(-200, 200); ax.set_title(f'{label} — residuals', fontsize=9)\n",
+-    "        ax.legend(fontsize=7)\n",
+-    "\n",
+-    "    fig.suptitle(suptitle, fontsize=12, y=1.01)\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(savepath, dpi=FIG_DPI, bbox_inches='tight')\n",
+-    "    plt.show()\n",
+-    "    print(f'Saved {savepath}')\n",
++    "    return _scatter_residuals_fig(rows, suptitle, savepath, q_clip_min, q_clip_max, FIG_DPI)\n",
+     "\n",
+     "print('Figure helper defined.')\n"
+    ]
+@@ -667,10 +619,9 @@
+    ],
+    "source": [
+     "artefacts = dict(\n",
+-    "    model=\"GBM\",\n",
+-    "\n",
+-    "    gbm_models      = gbm_models,\n",
+-    "    gbm_spline      = gbm_spline,\n",
++    "    models          = gbm_models,    # dict {quantile: estimator} (canonical key 'models')\n",
++    "    spline          = gbm_spline,    # canonical key 'spline'\n",
++
+     "    obs_sel         = obs_sel,\n",
+     "    qhat_gbm       = float(qhat_gbm),\n",
+     "    quantile_losses = list(quantile_losses),\n",
+diff --git a/4c_SIM_MODEL.ipynb b/4c_SIM_MODEL.ipynb
+index 7650e6a..09ae030 100644
+--- a/4c_SIM_MODEL.ipynb
++++ b/4c_SIM_MODEL.ipynb
+@@ -177,9 +177,10 @@
+     "with open(param_dir / 'sim_best_params.json') as fp:\n",
+     "    PARAMS = json.load(fp)\n",
+     "\n",
+-    "# obs_sel: use features list stored in JSON (from sweep), fall back to obs_model\n",
+-    "# obs_sel    = PARAMS.get('features', obs_model)\n",
+-    "obs_sel = PARAMS.get('obs_sel', PARAMS.get('features', obs_model))\n",
++    "# obs_sel: exactly the feature list recorded in the sweep JSON (single source of truth)\n",
++    "obs_sel = PARAMS['obs_sel']\n",
++    "assert isinstance(obs_sel, list) and obs_sel, 'obs_sel missing/empty in sweep JSON'\n",
++
+     "\n",
+     "\n",
+     "\n",
+@@ -237,23 +238,10 @@
+     }
+    ],
+    "source": [
+-    "# Per-feature adaptive floor\n",
+-    "OOD_WORST = {\n",
+-    "    'BOUGUER':         0.476,\n",
+-    "    'REVEAL_VP60VS70': 0.451,\n",
+-    "    'REVEAL_S80':      0.340,\n",
+-    "    'DEM':             0.307,\n",
+-    "    'REVEAL_VP90VS60': 0.315,\n",
+-    "    'REVEAL_VP50VS80': 0.306,\n",
+-    "    'REVEAL_S90':      0.301,\n",
+-    "    'GEOID':           0.293,\n",
+-    "    'LAB':             0.266,\n",
+-    "    'MOHO_GRAV':       0.218,\n",
+-    "    'REVEAL_S70':      0.226,\n",
+-    "    'LITH_RHO':        0.214,\n",
+-    "    'CTD':             0.201,\n",
+-    "}\n",
+-    "SIGMA_FLOOR_MIN = 0.5\n",
++    "# Per-feature adaptive floor — tuning owned by the sweep, loaded from sim_best_params.json (3c)\n",
++    "OOD_WORST       = PARAMS['OOD_WORST']\n",
++    "SIGMA_FLOOR_MIN = PARAMS['SIGMA_FLOOR_MIN']\n",
++
+     "\n",
+     "sigma_arr_orig = sigma_arr.copy()   # keep original for comparison\n",
+     "sigma_arr_new  = sigma_arr.copy()\n",
+@@ -426,23 +414,7 @@
+     }
+    ],
+    "source": [
+-    "def weighted_percentile(vals, weights, pcts):\n",
+-    "    \"\"\"Weighted quantile (ignores NaN/inf).\"\"\"\n",
+-    "    mask = np.isfinite(vals) & np.isfinite(weights)\n",
+-    "    vs, ws = vals[mask], weights[mask]\n",
+-    "    idx  = np.argsort(vs)\n",
+-    "    cumw = np.cumsum(ws[idx]) / ws.sum()\n",
+-    "    return np.interp(pcts / 100.0, cumw, vs[idx])\n",
+-    "\n",
+-    "def build_correction_spline(y_pred_cal, y_true_cal, w_cal, n_pctls=SPLINE_PCTLS):\n",
+-    "    \"\"\"PCHIP spline mapping predicted → empirical reference distribution.\n",
+-    "    Fitted on calibration slice only (no test leakage).\"\"\"\n",
+-    "    pctls      = np.linspace(1, 99, n_pctls)\n",
+-    "    pred_p     = weighted_percentile(y_pred_cal, w_cal, pctls)\n",
+-    "    true_p     = weighted_percentile(y_true_cal, w_cal, pctls)\n",
+-    "    _, keep    = np.unique(pred_p, return_index=True)\n",
+-    "    spline     = PchipInterpolator(pred_p[keep], true_p[keep], extrapolate=True)\n",
+-    "    return spline, pred_p, true_p\n",
++    "from lib.utils import weighted_percentile, build_correction_spline\n",
+     "\n",
+     "def apply_spline(vals, spline):\n",
+     "    out    = np.full_like(vals, np.nan, dtype=np.float32)\n",
+@@ -605,11 +577,10 @@
+     }
+    ],
+    "source": [
++    "from lib.utils import empirical_entropy as _empirical_entropy\n",
+     "def empirical_entropy(vals, bin_width=HIST_BIN_W):\n",
+-    "    bins   = np.arange(Q_CLIP_MIN, q_clip_max + bin_width, bin_width)\n",
+-    "    counts, _ = np.histogram(vals[np.isfinite(vals)], bins=bins)\n",
+-    "    probs  = counts / counts.sum()\n",
+-    "    return float(scipy_entropy(probs[probs > 0]))\n",
++    "    return _empirical_entropy(vals, Q_CLIP_MIN, q_clip_max, bin_width)\n",
++
+     "\n",
+     "def mean_bias(y_true, y_pred):\n",
+     "    valid = np.isfinite(y_pred) & np.isfinite(y_true)\n",
+@@ -691,46 +662,9 @@
+     }
+    ],
+    "source": [
++    "from lib.utils import scatter_residuals_fig as _scatter_residuals_fig\n",
+     "def scatter_residuals_fig(rows, suptitle, savepath):\n",
+-    "    lim  = (Q_CLIP_MIN * 1e3, q_clip_max * 1e3)\n",
+-    "    bins = np.linspace(lim[0], lim[1], 80)\n",
+-    "    fig, axes = plt.subplots(len(rows), 3, figsize=(18, 5 * len(rows)))\n",
+-    "    if len(rows) == 1: axes = axes[None, :]\n",
+-    "\n",
+-    "    for i, (yt, yraw, ycorr, label, color) in enumerate(rows):\n",
+-    "        yt_mW, yr_mW, yc_mW = yt*1e3, yraw*1e3, ycorr*1e3\n",
+-    "        for j, (yp, cmap, lbl) in enumerate([\n",
+-    "                (yr_mW, 'Oranges', 'uncorr'),\n",
+-    "                (yc_mW, 'Blues',   'corr')]):\n",
+-    "            ax = axes[i, j]\n",
+-    "            h, xe, ye = np.histogram2d(yt_mW, yp, bins=bins)\n",
+-    "            h = np.ma.masked_where(h == 0, h)\n",
+-    "            ax.pcolormesh(xe, ye, h.T, cmap=cmap,\n",
+-    "                          norm=plt.matplotlib.colors.LogNorm(), rasterized=True)\n",
+-    "            ax.plot(lim, lim, 'k--', lw=0.9, label='1:1')\n",
+-    "            r2 = r2_score(yt_mW, yp)\n",
+-    "            ax.set_title(f'{label} — {lbl}  R²={r2:.3f}', fontsize=9)\n",
+-    "            ax.set_xlim(lim); ax.set_ylim(lim)\n",
+-    "            ax.set_xlabel('Observed [mW/m²]'); ax.set_ylabel('Predicted [mW/m²]')\n",
+-    "            ax.legend(fontsize=7)\n",
+-    "\n",
+-    "        ax = axes[i, 2]\n",
+-    "        rr = yr_mW - yt_mW\n",
+-    "        rc = yc_mW - yt_mW\n",
+-    "        ax.hist(rr, bins=60, color='#FF9800', alpha=0.5, edgecolor='none',\n",
+-    "                label=f'uncorr  bias={np.mean(rr):.1f} σ={np.std(rr):.1f}')\n",
+-    "        ax.hist(rc, bins=60, color=color, alpha=0.65, edgecolor='none',\n",
+-    "                label=f'corr    bias={np.mean(rc):.1f} σ={np.std(rc):.1f}')\n",
+-    "        ax.axvline(0, color='k', lw=0.9)\n",
+-    "        ax.set_xlabel('Residual [mW/m²]'); ax.set_ylabel('Count')\n",
+-    "        ax.set_xlim(-200, 200); ax.set_title(f'{label} — residuals', fontsize=9)\n",
+-    "        ax.legend(fontsize=7)\n",
+-    "\n",
+-    "    fig.suptitle(suptitle, fontsize=12, y=1.01)\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(savepath, dpi=FIG_DPI, bbox_inches='tight')\n",
+-    "    plt.show()\n",
+-    "    print(f'Saved {savepath}')\n",
++    "    return _scatter_residuals_fig(rows, suptitle, savepath, Q_CLIP_MIN, q_clip_max, FIG_DPI)\n",
+     "\n",
+     "print('Figure helper defined.')\n"
+    ]
+@@ -840,7 +774,8 @@
+     "    w_tr_ref     = w_tr,       # reference sample weights (informational)\n",
+     "    sigma_arr    = sigma_arr,  # 1-D per-feature sigmas (use_sigma_helper=False)\n",
+     "    K            = float(K),\n",
+-    "    sim_spline   = sim_spline,\n",
++    "    spline       = sim_spline,   # canonical key 'spline'\n",
++
+     "    Q_CLIP_MIN   = Q_CLIP_MIN,\n",
+     "    q_clip_max   = float(q_clip_max),\n",
+     "    PARAMS       = PARAMS,\n",
+diff --git a/5a_QRF_TARGETS.ipynb b/5a_QRF_TARGETS.ipynb
+index 6be5c89..7195b29 100644
+--- a/5a_QRF_TARGETS.ipynb
++++ b/5a_QRF_TARGETS.ipynb
+@@ -30,51 +30,6 @@
+     "> Requires: `output/models/qrf_artefacts.pkl` (written by `4a_QRF_MODEL`)"
+    ]
+   },
+-  {
+-   "cell_type": "markdown",
+-   "id": "00000000",
+-   "metadata": {},
+-   "source": [
+-    "## 0. Config patch check"
+-   ]
+-  },
+-  {
+-   "cell_type": "code",
+-   "execution_count": 5,
+-   "id": "00000000",
+-   "metadata": {},
+-   "outputs": [
+-    {
+-     "name": "stdout",
+-     "output_type": "stream",
+-     "text": [
+-      "Config note displayed.\n"
+-     ]
+-    }
+-   ],
+-   "source": [
+-    "# ── config.py additions needed ───────────────────────────────────────────────\n",
+-    "# Add these lines to config.py if not already present:\n",
+-    "#\n",
+-    "# MODEL_VERSION = '0_2'\n",
+-    "#\n",
+-    "# model_paths update — add Q25 and Q75 GBM:\n",
+-    "# model_paths = {\n",
+-    "#     'qrf'       : model_dir / 'qrf_model.pkl',\n",
+-    "#     'gbm_q05'   : model_dir / 'gbm_q05_model.pkl',\n",
+-    "#     'gbm_q25'   : model_dir / 'gbm_q25_model.pkl',\n",
+-    "#     'gbm_q50'   : model_dir / 'gbm_q50_model.pkl',\n",
+-    "#     'gbm_q75'   : model_dir / 'gbm_q75_model.pkl',\n",
+-    "#     'gbm_q95'   : model_dir / 'gbm_q95_model.pkl',\n",
+-    "#     'sim_correction': model_dir / 'sim_correction_spline.pkl',\n",
+-    "#     'model_metrics' : model_dir / 'model_metrics.csv',\n",
+-    "# }\n",
+-    "#\n",
+-    "# Each GBM artefact pkl is produced by 4b_GBM_MODEL for each quantile.\n",
+-    "# The pkl must contain keys: 'model','scaler','spline','obs_sel','PARAMS'\n",
+-    "print('Config note displayed.')\n"
+-   ]
+-  },
+   {
+    "cell_type": "markdown",
+    "id": "00000000",
+@@ -274,9 +229,11 @@
+     "with open(model_dir / 'qrf_artefacts.pkl', 'rb') as fp:\n",
+     "    art = pickle.load(fp)\n",
+     "\n",
+-    "qrf      = art['qrf']\n",
++    "qrf      = art['model']\n",
++
+     "scaler   = art['scaler']\n",
+-    "spline   = art['qrf_spline']\n",
++    "spline   = art['spline']\n",
++
+     "obs_sel  = art['obs_sel']\n",
+     "PARAMS   = art['PARAMS']\n",
+     "qhat_qrf = art['qhat_qrf']\n",
+@@ -456,9 +413,11 @@
+     "\n",
+     "    for name, arr1d in [\n",
+     "        ('qrf_iqr50_raw',  iqr50_raw),  ('qrf_iqr90_raw',  iqr90_raw),\n",
+-    "        ('qrf_sigma_raw',  sigma_raw),\n",
++    "        ('qrf_std_raw',  sigma_raw),\n",
++
+     "        ('qrf_iqr50_corr', iqr50_corr), ('qrf_iqr90_corr', iqr90_corr),\n",
+-    "        ('qrf_sigma_corr', sigma_corr),\n",
++    "        ('qrf_std_corr', sigma_corr),\n",
++
+     "    ]:\n",
+     "        arrays[name] = to_2d(arr1d, df, x_vals, y_vals, xcol, ycol, is_reg)\n",
+     "\n",
+@@ -1147,7 +1106,8 @@
+     "\n",
+     "fig, ax = ant_qrf.map(\n",
+     "    'qrf_q50_corr',\n",
+-    "    cmap        = 'RdYlBu_r',\n",
++    "    cmap        = hf_cmap,\n",
++
+     "    vmin        = q_min,\n",
+     "    vmax        = q_max,\n",
+     "    cbar        = True,\n",
+diff --git a/5b_GBM_TARGETS.ipynb b/5b_GBM_TARGETS.ipynb
+index cb36c5b..eb339f1 100644
+--- a/5b_GBM_TARGETS.ipynb
++++ b/5b_GBM_TARGETS.ipynb
+@@ -5,7 +5,8 @@
+    "id": "00000000",
+    "metadata": {},
+    "source": [
+-    "# 5b – GBM TARGETS\n",
++    "# 5b_GBM_TARGETS — GBM Prediction on Target Grids\n",
++
+     "\n",
+     "Apply trained GBM quantile models (Q05 / Q50 / Q95) to Antarctic and Greenland\n",
+     "target grids, producing a compressed NetCDF per region.\n",
+@@ -16,7 +17,7 @@
+     "| `gbm_q05/q50/q95_corr` | Spline-corrected: Q50 PCHIP offset propagated identically to Q05/Q95 (interval widths preserved) |\n",
+     "| `gbm_q05/q95_conf` | Conformal bounds: Q05_raw − qhatgbm, Q95_raw + qhatgbm |\n",
+     "| `gbm_iqr90_raw/corr/conf` | Q95 − Q05 for each variant |\n",
+-    "| `gbm_sigma_raw/corr` | Gaussian-equivalent σ = IQR90 / (2 × 1.6449) |\n",
++    "| `gbm_std_raw/corr` | Gaussian-equivalent σ = IQR90 / (2 × 1.6449) |\n",
+     "\n",
+     "**Bundle read from** `output/models/gbm_artefacts.pkl` (written by 4b_GBM_MODEL).\n",
+     "\n",
+@@ -25,56 +26,6 @@
+     "- `output/targets/Kq15_GBM_v{MODELVERSION}.nc`\n"
+    ]
+   },
+-  {
+-   "cell_type": "markdown",
+-   "id": "00000000",
+-   "metadata": {},
+-   "source": [
+-    "## 0. Config patch check"
+-   ]
+-  },
+-  {
+-   "cell_type": "code",
+-   "execution_count": 9,
+-   "id": "00000000",
+-   "metadata": {},
+-   "outputs": [
+-    {
+-     "name": "stdout",
+-     "output_type": "stream",
+-     "text": [
+-      "  MODEL_VERSION                 : 0_4\n",
+-      "  model_dir                     : output/models\n",
+-      "  targets_dir                   : output/targets\n",
+-      "  TARGET_GRIDS (len)            : 2\n",
+-      "  obs_model (len)               : 21\n",
+-      "  q_clip_min                    : 0.001\n",
+-      "  q_clip_max                    : 0.35\n",
+-      "  netcdf_compression_level      : 4\n",
+-      "Config OK.\n"
+-     ]
+-    }
+-   ],
+-   "source": [
+-    "import sys\n",
+-    "sys.path.insert(0, \".\")\n",
+-    "from config import *\n",
+-    "\n",
+-    "_required = {\n",
+-    "    \"MODEL_VERSION\":           MODEL_VERSION,\n",
+-    "    \"model_dir\":               model_dir,\n",
+-    "    \"targets_dir\":             targets_dir,\n",
+-    "    \"TARGET_GRIDS (len)\":      len(TARGET_GRIDS),\n",
+-    "    \"obs_model (len)\":         len(obs_model),\n",
+-    "    \"q_clip_min\":               q_clip_min,\n",
+-    "    \"q_clip_max\":               q_clip_max,\n",
+-    "    \"netcdf_compression_level\": netcdf_compression_level,\n",
+-    "}\n",
+-    "for k, v in _required.items():\n",
+-    "    print(f\"  {k:<30s}: {v}\")\n",
+-    "print(\"Config OK.\")\n"
+-   ]
+-  },
+   {
+    "cell_type": "markdown",
+    "id": "00000000",
+@@ -101,8 +52,11 @@
+    ],
+    "source": [
+     "import sys, json, pickle, warnings, datetime, time\n",
++    "sys.path.insert(0, \".\")\n",
++    "from config import *\n",
+     "\n",
+     "import numpy as np\n",
++
+     "import pandas as pd\n",
+     "import xarray as xr\n",
+     "from pathlib import Path\n",
+@@ -325,9 +279,10 @@
+     "print(f\"Bundle keys: {list(art.keys())}\")\n",
+     "\n",
+     "# ── unpack ─────────────────────────────────────────────────────────────────────\n",
+-    "gbm_models      = art[\"gbm_models\"]       # dict {float → model}\n",
+-    "gbm_spline      = art[\"gbm_spline\"]       # PCHIP spline\n",
+-    "obs_sel         = art[\"obs_sel\"]          # list[str]  ← 'obssel', no underscore\n",
++    "gbm_models      = art[\"models\"]           # dict {float → model} (canonical key 'models')\n",
++    "gbm_spline      = art[\"spline\"]           # PCHIP spline (canonical key 'spline')\n",
++    "obs_sel         = art[\"obs_sel\"]          # list[str]\n",
++
+     "scaler          = art[\"scaler\"]          # StandardScaler\n",
+     "qhat_gbm         = float(art[\"qhat_gbm\"])  # conformal scalar\n",
+     "conformal_alpha = float(art.get(\"CONFORMAL_ALPHA\", 0.10))\n",
+@@ -478,8 +433,10 @@
+     "        \"gbm_iqr90_raw\"  : r2d(iqr90_raw),\n",
+     "        \"gbm_iqr90_corr\" : r2d(iqr90_corr),\n",
+     "        \"gbm_iqr90_conf\" : r2d(iqr90_conf),\n",
+-    "        \"gbm_sigma_raw\"  : r2d(sigma_raw),\n",
+-    "        \"gbm_sigma_corr\" : r2d(sigma_corr),\n",
++    "        \"gbm_std_raw\"   : r2d(sigma_raw),\n",
++
++    "        \"gbm_std_corr\"  : r2d(sigma_corr),\n",
++
+     "    }\n",
+     "\n",
+     "    # Shannon entropy on corrected Q50 field\n",
+diff --git a/5c_SIM_TARGETS.ipynb b/5c_SIM_TARGETS.ipynb
+index a5e1eaf..147857f 100644
+--- a/5c_SIM_TARGETS.ipynb
++++ b/5c_SIM_TARGETS.ipynb
+@@ -12,8 +12,9 @@
+     "\n",
+     "| Variable | Description |\n",
+     "|---|---|\n",
+-    "| `sim_q_raw` | Raw weighted-mean prediction |\n",
+-    "| `sim_q_corr` | Spline-corrected mean |\n",
++    "| `sim_q50_raw` | Raw weighted-mean prediction |\n",
++    "| `sim_q50_corr` | Spline-corrected mean |\n",
++
+     "| `sim_std_raw` | Weighted std of reference distribution (raw) |\n",
+     "| `sim_std_corr` | Std after spline correction (propagated offset) |\n",
+     "| `sim_lo_raw/corr` | q_mean ± std lower bound |\n",
+@@ -288,7 +289,8 @@
+     "W_ref     = art.get('w_tr_ref', np.ones(len(H_ref), dtype=np.float32))\n",
+     "sigma_arr = art['sigma_arr']        # (n_feat,) optimised bandwidths\n",
+     "K         = float(art['K'])\n",
+-    "sim_spline= art['sim_spline']       # PCHIP correction spline\n",
++    "sim_spline= art['spline']           # PCHIP correction spline (canonical key 'spline')\n",
++
+     "PARAMS    = art['PARAMS']\n",
+     "\n",
+     "n_ref, n_feat = X_ref.shape\n",
+@@ -438,7 +440,8 @@
+     "1. Load parquet, validate features\n",
+     "2. Scale features with train-fold scaler\n",
+     "3. Loop over batches of `BATCH_SIZE` finite points, calling `similarity_predict` with `hist=True`\n",
+-    "4. Apply PCHIP spline to `sim_q_raw` → `sim_q_corr`; propagate offset to bounds\n",
++    "4. Apply PCHIP spline to `sim_q50_raw` → `sim_q50_corr`; propagate offset to bounds\n",
++
+     "5. Reshape to 2D and write compressed NetCDF"
+    ]
+   },
+@@ -719,8 +722,10 @@
+     "        return to_2d(v, df, x_vals, y_vals, xcol, ycol, is_reg)\n",
+     "\n",
+     "    arrays = {\n",
+-    "        'sim_q_raw'   : r2(q_raw_1d),\n",
+-    "        'sim_q_corr'  : r2(q_corr_1d),\n",
++    "        'sim_q50_raw' : r2(q_raw_1d),\n",
++
++    "        'sim_q50_corr': r2(q_corr_1d),\n",
++
+     "        'sim_std_raw' : r2(std_1d),\n",
+     "        'sim_std_corr': r2(std_corr_1d),\n",
+     "        'sim_lo_raw'  : r2(lo_raw_1d),\n",
+@@ -753,7 +758,8 @@
+     "        obs_sel_used=obs_sel,\n",
+     "        model_tag=f'{prefix}_SIM',\n",
+     "        extra={'shannon_H_mean': H_mean,\n",
+-    "               'spline_applied': 'sim_q_corr, sim_lo_corr, sim_hi_corr'},\n",
++    "               'spline_applied': 'sim_q50_corr, sim_lo_corr, sim_hi_corr'},\n",
++
+     "    )\n",
+     "\n",
+     "    grid_cfg['agrid'] = grid_from_xr_dataset(ds, name=label)\n",
+@@ -936,26 +942,17 @@
+     }
+    ],
+    "source": [
+-    "import matplotlib.pyplot as plt\n",
+-    "\n",
+-    "plot_vars = ['sim_q_corr', 'sim_std_corr', 'sim_N']\n",
+-    "cmaps     = ['RdYlBu_r',   'viridis',      'plasma']\n",
++    "from lib.utils import grid_from_xr_dataset\n",
+     "\n",
++    "# Stage-5 maps routed through agrid with config colormaps (M4/C5).\n",
++    "var_cmaps = {'sim_q50_corr': hf_cmap, 'sim_std_corr': unc_cmap}\n",
+     "for label, ds in results_sim_ds.items():\n",
+-    "    fig, axes = plt.subplots(1, len(plot_vars), figsize=(18, 5))\n",
+-    "    for ax, var, cmap in zip(axes, plot_vars, cmaps):\n",
+-    "        if var not in ds:\n",
+-    "            continue\n",
+-    "        vmin = float(np.nanpercentile(ds[var].values, 2))\n",
+-    "        vmax = float(np.nanpercentile(ds[var].values, 98))\n",
+-    "        ds[var].plot(ax=ax, cmap=cmap, vmin=vmin, vmax=vmax,\n",
+-    "                     cbar_kwargs={'label': ds[var].attrs.get('units', '')})\n",
+-    "        ax.set_title(f'[{label.upper()}] {var}', fontsize=10)\n",
+-    "        ax.set_aspect('equal')\n",
+-    "    fig.suptitle(f'Similarity — {label.upper()} (v{MODEL_VERSION})',\n",
+-    "                 fontsize=12, fontweight='bold')\n",
+-    "    fig.tight_layout()\n",
+-    "\n",
++    "    g = grid_from_xr_dataset(ds, name=label)\n",
++    "    for var, cmap in var_cmaps.items():\n",
++    "        if var in ds:\n",
++    "            g.map(var, cmap=cmap, vmin=q_min, vmax=q_max)\n",
++    "    if 'sim_N' in ds:\n",
++    "        g.map('sim_N', cmap=unc_cmap)\n",
+     "    print(f'[{label.upper()}] maps done.')"
+    ]
+   },
+@@ -1057,7 +1054,8 @@
+    ],
+    "source": [
+     "import pandas as pd\n",
+-    "df_ant = pd.read_parquet('data/antarctica.parquet', columns=['REVEAL_P150'])\n",
++    "df_ant = pd.read_parquet(parquet_ant, columns=['REVEAL_P150'])\n",
++
+     "print(f\"REVEAL_P150 NaN fraction: {df_ant['REVEAL_P150'].isna().mean():.3f}\")\n",
+     "print(f\"REVEAL_P150 range: [{df_ant['REVEAL_P150'].min():.3f}, {df_ant['REVEAL_P150'].max():.3f}]\")"
+    ]
+@@ -1107,7 +1105,8 @@
+    "source": [
+     "results_sim['ant']['ds']\n",
+     "\n",
+-    "results_sim_ds['ant'].plot('sim_q_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "TARGET_GRIDS[0]['agrid'].map('sim_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++
+    ]
+   },
+   {
+@@ -1171,7 +1170,8 @@
+     }
+    ],
+    "source": [
+-    "TARGET_GRIDS[0]['agrid'].map('sim_q_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "TARGET_GRIDS[0]['agrid'].map('sim_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++
+    ]
+   },
+   {
+diff --git a/README.md b/README.md
+index 97f2c0a..c7b5182 100644
+--- a/README.md
++++ b/README.md
+@@ -1,83 +1,171 @@
+ # Aq2 / Kq2 — Subglacial Geothermal Heat Flow for Antarctica and Greenland
+ 
+-**Status:** Active development — v2.1 (May 2026)
++**Status:** Active development — model version `0_4` (see `MODEL_VERSION` in `config.py`)
+ 
+ ---
+ 
+ ## Overview
+ 
+-This repository contains the full modelling pipeline to produce the Aq2 (Antarctica) and Kq2 (Greenland) subglacial geothermal heat flow datasets. These datasets are intended as boundary conditions for ice sheet models, improving on the earlier Aq1 / Kq1 products by combining three independent methods and applying physics-based forward corrections.
++This repository contains the modelling pipeline that produces the Aq2 (Antarctica)
++and Kq2 (Greenland) subglacial geothermal heat-flow datasets. The products are
++intended as basal boundary conditions for ice-sheet models. They improve on the
++earlier Aq1 / Kq1 products by combining three independent statistical methods and
++then applying physics-based forward corrections.
+ 
+-The work builds on the global IHFC heat flow database and a set of over 20 geophysical observables sampled onto 5 km polar stereographic grids, drawing on seismic tomography, crustal structure models, gravity, magnetics, and lithospheric density.
++The work builds on the global IHFC heat-flow database and a set of ~22 geophysical
++observables sampled onto 5 x 5 km polar-stereographic grids (EPSG:3031 for
++Antarctica, EPSG:3413 for Greenland), drawing on seismic tomography, crustal
++structure, gravity, magnetics, and lithospheric density.
+ 
+ ---
+ 
+ ## Methods
+ 
+-Three complementary modelling approaches are used in parallel:
++Three complementary methods are trained and applied in parallel. Each is developed
++across a matched trio of notebooks (sweep, model, target).
+ 
+-### 1. Gradient Boosting (HistGradientBoostingRegressor)
+-A gradient boosted tree model trained with a quantile loss function, providing the best-calibrated point estimates. 
++### 1. Gradient Boosting (GBM)
++`HistGradientBoostingRegressor` trained with the quantile loss at each of the five
++prediction quantiles (0.05, 0.25, 0.50, 0.75, 0.95). Provides the best-calibrated
++point estimate. One fitted model per quantile is stored (dict), so the artefact key
++is `models` (plural) rather than `model`.
+ 
+ ### 2. Quantile Regression Forest (QRF)
+-A random forest trained via the `quantile_forest` library. Predicts the full conditional distribution at any quantile simultaneously, offering robust probabilistic uncertainty estimates. This is the primary model for uncertainty characterisation.
++A random forest trained with the `quantile_forest` library. A single fitted forest
++predicts any quantile simultaneously, which makes it the primary model for
++uncertainty characterisation.
+ 
+ ### 3. Similarity (Aq1 heritage)
+-A distance-weighted analogue method. Each target point receives a heat flow estimate from the K most-similar reference points in normalised observable space. Gaussian kernel widths (σ) per feature are optimised with Optuna. Provides backwards compatibility with Aq1 and distributional metrics that are useful for entropy-based uncertainty analysis.
++A distance-weighted analogue method. Each target point is estimated from the K
++most-similar reference points in z-scored observable space, using per-feature
++Gaussian kernel widths (sigma) optimised with Optuna. It is non-parametric — there
++is no fitted estimator object — so its artefact carries the reference database and
++kernel parameters instead. It provides the full empirical distribution used for
++entropy-based uncertainty analysis and backward compatibility with Aq1.
++
++### Forward-model corrections (Aq2 / Kq2)
++Applied to the empirical predictions in the forward step (`lib/forward.py`,
++`7_FORWARD`):
++- **Volcanic heat injection:** Gaussian kernels centred on Holocene ("active") and
++  Pleistocene volcanoes, with age-dependent amplitude and spatial scale (see the
++  `VOLC_KERNEL_*` constants in `config.py`).
++- **Topographic refraction correction:** the Colgan-style correction adjusts heat
++  flow for sub-glacial relief using BedMachine bed geometry and rock/ice thermal
++  conductivities.
+ 
+-### Forward model corrections (Aq2 / Kq2)
+-Applied after the empirical predictions:
+-- **Volcanic heat injection:** Mexican-hat (Ricker wavelet) Gaussian kernels centred on Holocene and Pleistocene volcanoes from the GVP catalogue, with age-dependent amplitude and spatial scale.
+-- **Topographic refraction correction:** Adjusts heat flow for sub-glacial topographic relief using BedMachine bed geometry and a rock/ice thermal conductivity model.
++---
++
++## Pipeline
++
++```
++1_IMPORT           Load IHFC DB, cluster reference points, build 5 km grids,
++                   import all observables to parquet.
++2_OBSERVABLES      Visualise and describe each observable.
++
++3a_QRF_SWEEP  }
++3b_GBM_SWEEP  }    Hyperparameter / feature sweeps. Each writes the chosen
++3c_SIM_SWEEP  }    feature list and tuning constants to output/sweeps/<method>_params.json.
++3d_DEPTH_SWEEP     REVEAL depth-slice sweep.
++
++4a_QRF_MODEL  }    Train each method on the reference data using the sweep JSON,
++4b_GBM_MODEL  }    fit the conformal / correction spline, and export
++4c_SIM_MODEL  }    output/models/<method>_artefacts.pkl.
++
++5a_QRF_TARGETS }   Load the artefact, predict on the Antarctica and Greenland
++5b_GBM_TARGETS }   target grids, and write the output NetCDF products.
++5c_SIM_TARGETS }
++
++6_CLUSTERING_v2    Multi-model comparison / clustering.
++7_FORWARD          Volcanic + topographic forward corrections (Aq2 / Kq2).
++X_EXTRAS           Ancillary figures and checks.
++```
+ 
+ ---
+ 
+-## Repository Structure
++## How configuration drives selection
++
++- **`config.py`** is the single source for paths, grid definitions
++  (`TARGET_GRIDS`), CRS, thresholds, model defaults, and plotting constants
++  (`hf_cmap`, `hf_v_min`, `hf_v_max`, `unc_cmap`). Notebooks import it rather than
++  hard-coding literals.
++- **`recipe.py`** defines every observable (`dd`) and its import routing. The schema
++  for a `dd` entry is documented at the top of the file.
++- **Feature hierarchy:** `obs_model ⊆ obs_sweep ⊆ obs`.
++  - `obs` — full parquet catalogue (everything `1_IMPORT` writes).
++  - `obs_sweep` — candidate universe fed into the sweeps.
++  - `obs_model` — the features actually used in prediction.
++- **Sweep JSON = single source of truth for `obs_sel`.** Each sweep notebook writes
++  the human-approved final feature list under the key `obs_sel` in
++  `output/sweeps/<method>_params.json`. The model notebooks read it back with
++  `obs_sel = PARAMS['obs_sel']` (no silent fallback), so the selection cannot drift
++  between sweep and training.
++
++---
++
++## Artefact flow
+ 
+ ```
+-aq2/
+-├── 1_Import.ipynb          # Load IHFC DB, cluster, build 5 km grids, import observables
+-├── 2_Observables.ipynb     # Visualise and describe all observables
+-├── 3_Test_Sweep.ipynb      # Param sweep, REVEAL depth sweep, feature ablation
+-├── 4_Run_Models.ipynb      # Train QRF and GB; predict all target grids
+-├── 5_Sim.ipynb             # Train and apply Similarity model
+-├── 6_Target_Grids.ipynb    # Load 5 km products; multi-model comparison maps
+-├── 7_Uncertainty.ipynb     # Entropy, inter-model agreement, robustness figures
+-├── 8_Forward_Models.ipynb  # Volcanic and topographic forward corrections (Aq2/Kq2)
+-│
+-├── config.py               # All settings: paths, features, hyperparameters
+-├── recipe.py               # Observable definitions, import functions, volcano catalogue
+-│
+-├── lib/
+-│   ├── __init__.py
+-│   ├── agrid.py            # Grid import library (v0.4.9)
+-│   ├── utils.py            # Utility functions (latlon_to_epsg, sort_quantiles)
+-│   ├── similarity.py
+-
+-│
+-├── output/
+-│   ├── param_sweep/        # Sweep CSV results (tracked in git)
+-│   ├── depth_sweep/
+-│   ├── feature_sweep/
+-│   └── *.nc                # NetCDF products (NOT tracked in git); external repo to be added 
+-│
+-├── fig/                    
+-├── data/                   # Symlink or local copy of data (NOT tracked in git)
+-└── temp/                   # Scratch files
++output/sweeps/<method>_params.json   (obs_sel, PARAMS, tuning constants)
++        │  read by stage 4
++        ▼
++output/models/<method>_artefacts.pkl (model|models, scaler, spline, obs_sel, PARAMS)
++        │  read by stage 5
++        ▼
++output/*.nc                          (canonical output variables)
++        │  read by lib/forward.py
++        ▼
++forward-corrected Aq2 / Kq2 products
+ ```
+ 
++Artefact bundle keys are standardised across methods:
++`model` (QRF / Similarity) or `models` (GBM quantile dict), `scaler`, `spline`,
++`obs_sel`, `PARAMS`. The Similarity bundle additionally carries its reference
++database and kernel parameters. Model quality metrics are written separately to
++`output/models/model_metrics.csv`.
++
++## Canonical output variable naming
++
++Stage-5 NetCDF files use a uniform, method-prefixed scheme:
++
++| Variable | Meaning |
++|---|---|
++| `<method>_q05_corr` … `<method>_q95_corr` | bias-corrected quantiles |
++| `<method>_std_corr` | Gaussian-equivalent standard deviation |
++| `qrf_iqr50_corr`, `qrf_iqr90_corr` | QRF interquantile ranges |
++| `sim_N`, `sim_hist` | Similarity neighbour count / distribution |
++
++`lib/forward.py:load_empirical_grid()` maps any `qrf_`/`gbm_`/`sim_` prefixed
++canonical variable to the internal `q_q05 … q_q95` / `q_std` names, so the forward
++step is method-agnostic.
++
+ ---
+ 
+-## Data Requirements
++## Current status
+ 
+-All input datasets are expected under `../data/` (one level above the repo root). Key datasets include:
++- **Production:** import, observables, all three sweep/model/target trios, and the
++  volcanic + topographic forward corrections.
++- **Phase-2 placeholders (not yet production):**
++  - `lib/forward.py` topographic correction uses **constant** rock/ice conductivity
++    placeholders (`TOPO_K_ROCK_DEFAULT`, `TOPO_K_ICE_DEFAULT`); spatially varying
++    conductivity is not yet wired in.
++  - Submarine / marine heat-flow correction is not implemented.
++  - `lib/uncertainty.py:ensemble_forward()` is a Monte-Carlo stub that raises
++    `NotImplementedError`; only the parametric (analytical) uncertainty path is
++    active.
++
++---
++
++## Data requirements
++
++All input datasets are expected under `../data/` (one level above the repo root).
++Key datasets:
+ 
+ | Dataset | Reference | Variable |
+ |---|---|---|
+-| IHFC 2024 GHFDB | Fuchs et al. 2024 | Heat flow observations |
++| IHFC 2024 GHFDB | Fuchs et al. 2024 | Heat-flow observations |
+ | REVEAL | Auer et al. 2024 | Seismic tomography (S & P wave) |
+ | BedMachine Antarctica v3 | Morlighem et al. 2020 | Bed topography, ice thickness |
+-| BedMachine Greenland v5 | Morlighem et al. 2017 | Bed topography, ice thickness |
++| BedMachine Greenland v6 | Morlighem et al. 2017 | Bed topography, ice thickness |
+ | GEMMA | Reguzzoni et al. 2013 | Gravity-derived Moho |
+ | Szwillus et al. 2019 | Szwillus et al. 2019 | Seismic Moho |
+ | LithoRef18 | Afonso et al. 2019 | LAB depth, densities |
+@@ -86,27 +174,34 @@ All input datasets are expected under `../data/` (one level above the repo root)
+ 
+ ---
+ 
+-## Setup
++## Running
+ 
+-```bash
+-# Clone
+-git clone https://github.com/TobbeTripitaka/Aq2.git
+-cd Aq2
++The notebooks are developed and run in **VS Code** (Jupyter extension) against the
++project virtual environment. Run them in pipeline order:
+ 
+-# Install dependencies
+-pip install numpy pandas xarray scipy scikit-learn quantile_forest optuna
+-pip install geopandas pyproj rasterio rioxarray stripy
+-pip install cartopy matplotlib cmcrameri
++```
++1_IMPORT → 2_OBSERVABLES →
++3a/3b/3c(/3d) → 4a/4b/4c → 5a/5b/5c →
++6_CLUSTERING_v2 → 7_FORWARD
++```
++
++Dependencies:
+ 
+-# Run notebooks in order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
++```bash
++pip install numpy pandas xarray scipy scikit-learn quantile_forest optuna numba
++pip install geopandas pyproj rasterio rioxarray
++pip install cartopy matplotlib cmcrameri
+ ```
+ 
++`config.py` creates the required `output/`, `data/`, `fig/`, `temp/`, and `logs/`
++directories on import.
++
+ ---
+ 
+-## Key References
++## Key references
+ 
+-- Stål et al. (2021) — Aq1 original Antarctic heat flow, *Journal of Geophysical Research*
+-- Al-Aghbary et al. (2026) — Uncertainty characterisation of subglacial heat flow predictions
++- Stål et al. (2021) — Aq1 original Antarctic heat flow, *JGR*
++- Al-Aghbary et al. (2026) — Uncertainty characterisation of subglacial heat flow
+ - Fuchs et al. (2024) — IHFC 2024 Global Heat Flow Database
+ - Morlighem et al. (2020) — BedMachine Antarctica v3
+ 
+diff --git a/config.py b/config.py
+index 362b3b5..1e90390 100644
+--- a/config.py
++++ b/config.py
+@@ -1,5 +1,5 @@
+ # =============================================================================
+-# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v0.2)
++# CONFIG.PY  —  Aq2 / Kq2  project configuration  (v4.0)
+ # =============================================================================
+ 
+ from pathlib import Path
+@@ -97,7 +97,7 @@ TARGET_GRIDS = [
+ ]
+ 
+ # ── Heat-flow thresholds [W/m²] ───────────────────────────────────────────────
+-q_min     = 0.0      # 'normal' lowe for statistics and plots
++q_min     = 0.0      # 'normal' lower for statistics and plots
+ q_clip_min = 0.001   # hard minimum
+ q_max     = 0.140    # 'normal' upper for statistics and plots
+ q_clip_max = 0.350   # upper clip applied in 1_Import — used as model ceiling
+@@ -192,7 +192,11 @@ CV_FOLDS_SIM     = 5
+ # sigma=0.25  → neighbourhood half-width ≈ 0.25 std, very sharp
+ # sigma=4.0   → neighbourhood half-width ≈ 4 std, very wide / near-flat
+ # standardisation to avoid wasting trials on degenerate extremes.
+-SIGMA_BOUNDS = (0.25, 4.0)
++# SIM_SIGMA_BOUNDS is the single source of truth for the similarity per-feature
++# sigma search range; 3c reads it from here and records the bounds it used in
++# sim_best_params.json. SIGMA_BOUNDS is retained as an alias for back-compat.
++SIM_SIGMA_BOUNDS = (0.25, 4.0)
++SIGMA_BOUNDS = SIM_SIGMA_BOUNDS
+ K_RANGE          = (2.0, 20.0)
+ 
+ PARAM_GRID = {
+diff --git a/lib/forward.py b/lib/forward.py
+index fd785aa..b87e088 100644
+--- a/lib/forward.py
++++ b/lib/forward.py
+@@ -65,19 +65,27 @@ def load_empirical_grid(
+     region: str,
+     chunks: Optional[dict] = None,
+ ) -> xr.Dataset:
+-    """Load the 5 km empirical QRF NetCDF and return with canonical variable names."""
++    """Load a 5 km empirical NetCDF (QRF/GBM/SIM) and return canonical variable names.
++
++    Method-agnostic: accepts any of the ``qrf_``/``gbm_``/``sim_`` prefixed
++    canonical outputs written by stage 5 and maps them onto the internal
++    ``q_q05 … q_q95`` / ``q_std`` names used by the forward model. Only one
++    method's grid is loaded per call, so the combined map has no key clashes.
++    """
+     _print_step(f"Loading empirical 5 km grid — {region}")
+     ds = xr.open_dataset(nc_path, chunks=chunks or {})
+-    rename = {
+-        "qrf_q05_corr":  "q_q05",
+-        "qrf_q25_corr":  "q_q25",
+-        "qrf_q50_corr":  "q_q50",
+-        "qrf_q75_corr":  "q_q75",
+-        "qrf_q95_corr":  "q_q95",
+-        "qrf_sigma_corr": "q_std",
+-        "qrf_iqr50_corr": "q_iqr50",
+-        "qrf_iqr90_corr": "q_iqr90",
+-    }
++    rename = {}
++    for m in ("qrf", "gbm", "sim"):
++        rename.update({
++            f"{m}_q05_corr": "q_q05",
++            f"{m}_q25_corr": "q_q25",
++            f"{m}_q50_corr": "q_q50",
++            f"{m}_q75_corr": "q_q75",
++            f"{m}_q95_corr": "q_q95",
++            f"{m}_std_corr": "q_std",
++            f"{m}_iqr50_corr": "q_iqr50",
++            f"{m}_iqr90_corr": "q_iqr90",
++        })
+     ds = ds.rename({k: v for k, v in rename.items() if k in ds})
+     if "q_mean" not in ds and "q_q50" in ds:
+         ds = ds.assign(q_mean=ds["q_q50"].assign_attrs(
+diff --git a/lib/uncertainty.py b/lib/uncertainty.py
+index db37e6a..007df22 100644
+--- a/lib/uncertainty.py
++++ b/lib/uncertainty.py
+@@ -27,7 +27,7 @@ def compute_uncertainty_summary(ds: xr.Dataset) -> xr.Dataset:
+     Adds / updates:
+         q_std          Gaussian-equivalent sigma from 90% CI
+         q_iqr          q75 - q25
+-        q_cv           coefficient of variation = q_std / q_mean  (clipped 0-10)
++        q_cv           coefficient of variation = q_std / q50  (clipped 0-10)
+         q_ci90_lower   q05
+         q_ci90_upper   q95
+     """
+@@ -51,7 +51,7 @@ def compute_uncertainty_summary(ds: xr.Dataset) -> xr.Dataset:
+         "q_iqr": q_iqr.assign_attrs(
+             units="W m-2", long_name="Interquartile range q75-q25"),
+         "q_cv": q_cv.assign_attrs(
+-            units="dimensionless", long_name="Coefficient of variation q_std/q_mean"),
++            units="dimensionless", long_name="Coefficient of variation q_std/q50"),
+         "q_ci90_lower": q05.assign_attrs(
+             units="W m-2", long_name="Lower bound 90% CI (q05)"),
+         "q_ci90_upper": q95.assign_attrs(
+diff --git a/lib/utils.py b/lib/utils.py
+index abcf2a5..0446075 100644
+--- a/lib/utils.py
++++ b/lib/utils.py
+@@ -43,7 +43,96 @@ def sort_quantiles(*arrays):
+     return tuple(sorted_[i] for i in range(len(arrays)))
+ 
+ 
+-import numpy as np
++# ── Model / calibration helpers (shared by 4a/4b/4c) ─────────────────────────
++# These were previously copy-pasted inline into 4a_QRF_MODEL, 4b_GBM_MODEL and
++# 4c_SIM_MODEL. Moved here to remove drift risk. Behaviour is unchanged; the
++# per-notebook constants (q_clip_min/max, bin width, percentile knots) are now
++# passed in explicitly so callers keep full control.
++
++def weighted_percentile(vals, weights, pcts):
++    """Weighted quantile (ignores NaN/inf). pcts are in [0, 100]."""
++    mask = np.isfinite(vals) & np.isfinite(weights)
++    vs, ws = vals[mask], weights[mask]
++    idx  = np.argsort(vs)
++    cumw = np.cumsum(ws[idx]) / ws.sum()
++    return np.interp(pcts / 100.0, cumw, vs[idx])
++
++
++def build_correction_spline(y_pred_cal, y_true_cal, w_cal, n_pctls=200):
++    """
++    PCHIP spline mapping model predictions -> empirical reference distribution.
++    Fitted on calibration slice only (no test leakage).
++    Addresses regression-to-the-mean / centre-of-distribution bias.
++
++    Returns (spline, pred_p, true_p).
++    """
++    from scipy.interpolate import PchipInterpolator
++    pctls      = np.linspace(1, 99, n_pctls)
++    pred_p     = weighted_percentile(y_pred_cal, w_cal, pctls)
++    true_p     = weighted_percentile(y_true_cal, w_cal, pctls)
++    _, keep    = np.unique(pred_p, return_index=True)
++    spline     = PchipInterpolator(pred_p[keep], true_p[keep], extrapolate=True)
++    return spline, pred_p, true_p
++
++
++def empirical_entropy(vals, q_min, q_max, bin_width=0.010):
++    """Shannon entropy (bits/nats per scipy default) of the value histogram."""
++    from scipy.stats import entropy as scipy_entropy
++    bins   = np.arange(q_min, q_max + bin_width, bin_width)
++    counts, _ = np.histogram(vals[np.isfinite(vals)], bins=bins)
++    probs  = counts / counts.sum()
++    return float(scipy_entropy(probs[probs > 0]))
++
++
++def scatter_residuals_fig(rows, suptitle, savepath, q_min, q_max, fig_dpi=150):
++    """
++    rows: list of (y_true, y_raw, y_corr, label, color)
++    3-column figure: uncorrected | corrected | residual overlay
++    """
++    import matplotlib.pyplot as plt
++    from sklearn.metrics import r2_score
++    lim  = (q_min * 1e3, q_max * 1e3)
++    bins = np.linspace(lim[0], lim[1], 80)
++    fig, axes = plt.subplots(len(rows), 3, figsize=(18, 5 * len(rows)))
++    if len(rows) == 1: axes = axes[None, :]
++
++    for i, (yt, yraw, ycorr, label, color) in enumerate(rows):
++        yt_mW, yr_mW, yc_mW = yt*1e3, yraw*1e3, ycorr*1e3
++        for j, (yp, cmap, alpha, lbl) in enumerate([
++                (yr_mW, 'Oranges', 0.8, 'uncorr'),
++                (yc_mW, 'Blues',   0.8, 'corr')]):
++            ax = axes[i, j]
++            h, xe, ye = np.histogram2d(yt_mW, yp, bins=bins)
++            h = np.ma.masked_where(h == 0, h)
++            ax.pcolormesh(xe, ye, h.T, cmap=cmap,
++                          norm=plt.matplotlib.colors.LogNorm(),
++                          rasterized=True)
++            ax.plot(lim, lim, 'k--', lw=0.9, label='1:1')
++            r2 = r2_score(yt_mW, yp)
++            ax.set_title(f'{label} — {lbl}  R²={r2:.3f}', fontsize=9)
++            ax.set_xlim(lim); ax.set_ylim(lim)
++            ax.set_xlabel('Observed [mW/m²]'); ax.set_ylabel('Predicted [mW/m²]')
++            ax.legend(fontsize=7)
++
++        ax = axes[i, 2]
++        rr = yr_mW - yt_mW
++        rc = yc_mW - yt_mW
++        ax.hist(rr, bins=60, color='#FF9800', alpha=0.5, edgecolor='none',
++                label=f'uncorr  bias={np.mean(rr):.1f} σ={np.std(rr):.1f}')
++        ax.hist(rc, bins=60, color=color, alpha=0.65, edgecolor='none',
++                label=f'corr    bias={np.mean(rc):.1f} σ={np.std(rc):.1f}')
++        ax.axvline(0, color='k', lw=0.9)
++        ax.set_xlabel('Residual [mW/m²]'); ax.set_ylabel('Count')
++        ax.set_xlim(-200, 200); ax.set_title(f'{label} — residuals', fontsize=9)
++        ax.legend(fontsize=7)
++
++    fig.suptitle(suptitle, fontsize=12, y=1.01)
++    fig.tight_layout()
++    fig.savefig(savepath, dpi=fig_dpi, bbox_inches='tight')
++    plt.show()
++    print(f'Saved {savepath}')
++
++
+ import pyproj
+ import xarray as xr
+ from lib.agrid import Grid  # adjust import to your package
+diff --git a/recipe.py b/recipe.py
+index 80b64c6..9fdceea 100644
+--- a/recipe.py
++++ b/recipe.py
+@@ -21,6 +21,24 @@
+ 
+ # Currently grid-keyed: DEM (3 variants) and SEDIMENT (3 variants).
+ # All other observables are shared.
++#
++# ``dd`` entry schema (keys read by lib/agrid.py)
++# -----------------------------------------------
++#   label            (required) column name written to the parquet catalogue.
++#   import_type      (required) dispatch key for _read_data:
++#                    "read_raster" | "read_ascii" | "read_grid" |
++#                    "read_shape" | "compute".
++#   grid             (optional) str or list of grid names ("IHFC",
++#                    "Antarctica", "Greenland"). Entry imported only by the
++#                    matching Grid(s); absent => shared across all grids.
++#   filepath_or_buffer (source-file entries) path to the data file.
++#   func             (compute entries) callable(self, d) returning a 1-D array.
++#   depends_on       (compute entries) list of labels that must exist first.
++#   interpol_method  interpolation for point/grid readers ("linear"/"nearest").
++#   x_preproc/z_preproc  optional callables applied to coord/value arrays.
++#   unit, v_range, cmap  metadata used by plotting/statistics.
++#   reference        (optional) short citation tag for the source dataset.
++#   exclude_from_obs (optional) True => label is kept out of the obs catalogue.
+ # ============================================================================
+ 
+ import numpy as np
+@@ -473,7 +491,7 @@ dd = [
+  "interpol_method":"linear",
+  "unit":"metre", "v_range":(0,5000), "cmap":"cmc.oslo_r",
+  "description":"Sediment thickness from gravity (GST1)",
+- "refrence":"bird2026"},
++ "reference":"bird2026"},
+ 
+ {
+     "label": "SEDIMENT", "grid": "Antarctica",
+@@ -524,7 +542,7 @@ dd = [
+  "func":compute_volcano_distance,
+  "unit":"metre", "v_range":(4_900,220_000), "cmap":"cmc.batlow",
+  "sigma":10_000, "weight":1.0,
+- "description":"Distance to nearest volcano (NaN beyond 2 deg)."},
++ "description":"Distance to nearest volcano (NaN beyond 100 km)."},
+ 
+ ]
+ 
