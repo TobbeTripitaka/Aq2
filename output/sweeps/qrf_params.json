@@ -10,25 +10,11 @@
   "q_clip_max": 0.2,
   "cal_frac": 0.1,
   "obs_sel": [
-    "MOHO_GRAV",
-    "REVEAL_S80",
     "MOHO",
     "GEOID",
+    "REVEAL_P150",
     "DEM",
-    "SEDIMENT",
-    "MAG_SEIS_MOHO",
-    "BOUGUER",
-    "EMAG2_LOG",
-    "FREE_AIR",
-    "REVEAL_S100",
-    "LITH_RHO",
-    "REVEAL_VP60VS70",
-    "REVEAL_S70",
-    "CTD",
-    "REVEAL_VP90VS60",
-    "REVEAL_VP50VS80",
-    "LAB",
-    "SI"
+    "SEDIMENT"
   ],
   "n_sweep_runs": 200
 }
