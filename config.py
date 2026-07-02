@@ -3,6 +3,7 @@
 # =============================================================================
 
 from pathlib import Path
+import json
 import numpy as np
 import sys; sys.path.insert(0, str(Path('.').resolve()))
 from recipe import dd
@@ -146,6 +147,29 @@ obs = list(dict.fromkeys(
 ))
 
 assert all(f in obs for f in obs_sweep), "obs_sweep has features not in recipe!"
+
+# ── Per-model feature resolution ────────────────────────────────────────
+def resolve_features(method):
+    """Return the feature subset a given model was swept and trained on.
+
+    Reads obs_sel from the method's sweep JSON (param_paths[method]) so the
+    model uses the same columns at fit and predict time. Falls back to
+    obs_model if the JSON or the obs_sel key is missing.
+    method : one of "qrf", "gbm", "sim".
+    """
+    key = str(method).lower()
+    if key not in param_paths:
+        raise ValueError(
+            f"resolve_features: unknown method {method!r}; "
+            f"expected one of {sorted(param_paths)}")
+    try:
+        with open(param_paths[key]) as fh:
+            params = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return list(obs_model)
+    sel = params.get("obs_sel") or params.get("features")
+    return list(sel) if sel else list(obs_model)
+
 
 # =============================================================================
 # MODEL TRAINING CONSTANTS
