@@ -35,8 +35,8 @@
   "n_optuna_trials": 200,
   "obs_sel_method": "greedy_forward",
   "obs_sel_n_feats": 14,
-  "obs_sel_greedy_r2": 0.32294343249082413,
-  "obs_sel_full_r2": 0.31125393754123054,
+  "obs_sel_greedy_r2": 0.3187847918108381,
+  "obs_sel_full_r2": 0.300443007641484,
   "obs_sel_harmful": [
     "REVEAL_VP90VS60"
   ],
