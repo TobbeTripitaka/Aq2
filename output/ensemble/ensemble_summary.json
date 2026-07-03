@@ -1,0 +1,25 @@
+{
+  "model_version": "0_5",
+  "methods": [
+    "qrf",
+    "gbm",
+    "sim"
+  ],
+  "weight_mode": "inv_rmse",
+  "weights": {
+    "qrf": 0.33768034751216264,
+    "gbm": 0.3220368007900286,
+    "sim": 0.34028285169780875
+  },
+  "quantiles": [
+    0.05,
+    0.25,
+    0.5,
+    0.75,
+    0.95
+  ],
+  "picp_target": 0.9,
+  "picp_inflation": {},
+  "structural_share_threshold": 0.5,
+  "regions": {}
+}

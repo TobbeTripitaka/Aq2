@@ -1,67 +1,97 @@
 {
-  "model_version": "03",
+  "model_version": "0_4",
   "NCLUSTERS_BEST": 3,
   "coarsen_factor": 5,
   "native_spacing_m": 5000,
   "target_spacing_m": 25000,
-  "n_features_sel": 19,
+  "n_features_sel": 5,
   "n_features_clust": 21,
-  "n_train": 30847,
+  "n_train": 30848,
   "n_cv_folds": 5,
+  "obs_sel": [
+    "MOHO",
+    "GEOID",
+    "REVEAL_P150",
+    "DEM",
+    "SEDIMENT"
+  ],
+  "cluster_cols": [
+    "MOHO",
+    "MOHO_GRAV",
+    "DEM",
+    "LAB",
+    "FREE_AIR",
+    "BOUGUER",
+    "SI",
+    "GEOID",
+    "REVEAL_S80",
+    "REVEAL_S90",
+    "REVEAL_S70",
+    "REVEAL_S100",
+    "REVEAL_VP60VS70",
+    "REVEAL_VP90VS60",
+    "REVEAL_VP50VS80",
+    "LITH_RHO",
+    "CRUST_RHO",
+    "MAG_SEIS_MOHO",
+    "SEDIMENT",
+    "CTD",
+    "EMAG2_LOG"
+  ],
   "cv_thresholds": {
-    "b_mean_cv": 0.013485575123494471,
-    "b_excess_cv": 0.024041934900961195,
-    "b_deficit_cv": 0.00795101084821049,
-    "Rcv25": 0.2794181804901806,
-    "Rcv75": 0.49839691418072934,
-    "A50_cv": 0.0004235242635567488,
-    "E50_cv": 8.435805498069718e-05
+    "b_mean_cv": 0.014196283269755808,
+    "b_excess_cv": 0.025885215655700986,
+    "b_deficit_cv": 0.007997519146045424,
+    "Rcv25": 0.2699859304045785,
+    "Rcv75": 0.5209041202889123,
+    "A50_cv": 0.0004285648921269035,
+    "E50_cv": 7.25602867553778e-05
   },
-  "diagnostics": [
+  "cluster_diagnostics": [
     {
       "NCLUSTERS": 2,
-      "Inertia": 461403.9,
-      "Silhouette": 0.2704,
-      "Davies_Bouldin": 1.4865,
+      "Inertia": 461497.4,
+      "Silhouette": 0.2703,
+      "Davies_Bouldin": 1.4869,
       "Cluster_sizes": [
-        12091,
-        18757
+        12083,
+        18765
       ]
     },
     {
       "NCLUSTERS": 3,
-      "Inertia": 399812.8,
-      "Silhouette": 0.2505,
-      "Davies_Bouldin": 1.4706,
+      "Inertia": 399934.7,
+      "Silhouette": 0.2507,
+      "Davies_Bouldin": 1.4691,
       "Cluster_sizes": [
-        17083,
-        7823,
-        5942
+        17116,
+        7802,
+        5930
       ]
     },
     {
       "NCLUSTERS": 4,
-      "Inertia": 346901.3,
-      "Silhouette": 0.2215,
-      "Davies_Bouldin": 1.6103,
+      "Inertia": 346882.4,
+      "Silhouette": 0.2219,
+      "Davies_Bouldin": 1.6079,
       "Cluster_sizes": [
-        10410,
-        5670,
-        7650,
-        7118
+        7128,
+        10444,
+        7590,
+        5686
       ]
     },
     {
       "NCLUSTERS": 5,
-      "Inertia": 320734.5,
-      "Silhouette": 0.2148,
-      "Davies_Bouldin": 1.6018,
+      "Inertia": 320676.2,
+      "Silhouette": 0.2152,
+      "Davies_Bouldin": 1.6003,
       "Cluster_sizes": [
-        10386,
-        7176,
-        6467,
-        4060,
-        2759
+        2763,
+        10419,
+        4064,
+        6459,
+        7143
       ]
     }
   ],
