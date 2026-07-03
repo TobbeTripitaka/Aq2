@@ -19,7 +19,23 @@
     0.95
   ],
   "picp_target": 0.9,
-  "picp_inflation": {},
+  "picp_inflation": {
+    "ant": 1.0,
+    "grl": 1.0
+  },
   "structural_share_threshold": 0.5,
-  "regions": {}
+  "regions": {
+    "ant": {
+      "grid": "output/ensemble/ant_ensemble_v0_5.nc",
+      "mean_ghf_mW": 56.49,
+      "mean_band_mW": 22.05,
+      "mean_struct_share": 0.086
+    },
+    "grl": {
+      "grid": "output/ensemble/grl_ensemble_v0_5.nc",
+      "mean_ghf_mW": 59.05,
+      "mean_band_mW": 20.55,
+      "mean_struct_share": 0.14
+    }
+  }
 }
