@@ -1,0 +1,782 @@
+diff --git a/config.py b/config.py
+index a47db18..0440c0c 100644
+--- a/config.py
++++ b/config.py
+@@ -96,10 +96,12 @@ CRS_ANT25 = parquet_ant_25km                    # back-compat aliases
+ CRS_GRL25 = parquet_grl_25km
+ 
+ # Figure output directories per notebook
++fig_dir_targets  = fig_root / "5_TARGETS"
+ fig_dir_cluster  = fig_root / "6_CLUSTERING"
+ fig_dir_ensemble = fig_root / "7_ENSEMBLE"
+ 
+-for _p in [cluster_dir, ensemble_dir, fig_dir_cluster, fig_dir_ensemble]:
++for _p in [cluster_dir, ensemble_dir, fig_dir_targets,
++           fig_dir_cluster, fig_dir_ensemble]:
+     _p.mkdir(parents=True, exist_ok=True)
+ 
+ # ── CRS ───────────────────────────────────────────────────────────────────────
+@@ -129,6 +131,10 @@ TARGET_GRIDS = [
+          out_nc_sim=grl_Kq2_sim_nc),
+ ]
+ 
++# Region -> projected EPSG lookup, derived from TARGET_GRIDS so the polar CRS used
++# by the result maps (ant = 3031, grl = 3413) has a single source of truth.
++REGION_EPSG = {g["label"]: int(g["epsg"]) for g in TARGET_GRIDS}
++
+ # ── Heat-flow thresholds [W/m²] ───────────────────────────────────────────────
+ q_min     = 0.0      # 'normal' lower for statistics and plots
+ q_clip_min = 0.001   # hard minimum
+@@ -343,6 +349,47 @@ entropy_cmap = "cmc.batlow"
+ unc_unit  = std_unit = "mW/m²"
+ entropy_unit = "bits"
+ 
++# Continuous robustness [0-1] and total-variance scales for the result maps in
++# 6_CLUSTERING / 7_ENSEMBLE (kept next to the other cmaps so ranges live in one place).
++robust_cmap  = "cmc.batlow"
++robust_v_min = 0.0
++robust_v_max = 1.0
++robust_unit  = ""          # dimensionless
++var_cmap     = "cmc.batlow"
++var_unit     = "mW² m⁻⁴"   # total variance is in (mW/m²)²
++VAR_PCTL_CAP = 98          # upper colour cap for variance maps (percentile, robust to outliers)
++
++# ── Categorical scales shared across notebooks ───────────────────────────────
++# Confidence classes (paper eqs 6-10) as produced in 6/7. Index = class code.
++# Order: 0 High, 1 Moderate, 2 Low, 3 Overconfident, 4 Underconfident,
++#        5 Unclassified (CONF_NA catch-all in 6_CLUSTERING).
++CONF_LABELS = ["High", "Moderate", "Low", "Overconfident",
++               "Underconfident", "Unclassified"]
++CONF_COLORS = ["#2c7bb6", "#abd9e9", "#ffffbf",
++               "#fdae61", "#d7191c", "#bdbdbd"]
++
++# Explainability classes (paper eqs 11-14) plus the 5th structural class added
++# by 7_ENSEMBLE. Index = class code.
++EXPL_LABELS = ["Low uncertainty", "Epistemic-dominated",
++               "Aleatoric-dominated", "High uncertainty",
++               "Structurally-uncertain"]
++EXPL_COLORS = ["#4a7c8e", "#9bbec8", "#c9a96e", "#8b4513", "#5d3a9b"]
++
++# Discrete cluster map (K categories); a qualitative base we sample K colours from.
++CLUSTER_CMAP = "tab10"
++
++
++def listed_cmap(colors, n=None):
++    """Build a matplotlib ListedColormap from a list of hex colours.
++
++    If n is given, the first n colours are used (handy for K-cluster maps that
++    need exactly K entries). Kept here so every notebook builds categorical
++    colour scales the same way.
++    """
++    from matplotlib.colors import ListedColormap
++    cols = list(colors) if n is None else list(colors)[:n]
++    return ListedColormap(cols)
++
+ coastline_color     = "black"
+ coastline_linewidth = 0.5
+ glacier_color       = "darkblue"
+diff --git a/lib/agrid.py b/lib/agrid.py
+index 1467335..d95c75e 100644
+--- a/lib/agrid.py
++++ b/lib/agrid.py
+@@ -924,8 +924,18 @@ class Grid:
+             hist_dict=None, scatter_kwargs=None, **kw):
+         """Production cartographic visualisation.
+ 
+-        pcolormesh for regular grids, scatter for irregular.
+-        Accepts data=None (basemap only), str, 1D/2D array, or list of layers.
++        Automatic dispatch on the data shape:
++          * a 2-D array, or a 1-D field that reshapes onto the grid
++            (reshape_tuple / nn), is drawn as a raster with pcolormesh;
++          * a genuinely irregular 1-D field (no regular shape) is drawn as
++            a scatter of the grid's lon/lat points.
++        Accepts data=None (basemap only), str (a column name), a 1-D/2-D array,
++        or a list of layers (each layer dispatched independently).
++
++        Always returns (fig, ax) so callers can refine placement, add overlays,
++        or save afterwards; `return_fig` is accepted for backward compatibility
++        and does not change the return value. When `ax` is supplied the figure is
++        drawn into it and file-saving/external-colorbar steps are skipped.
+         """
+         ccrs, cfeat, plt, mpath, mticker, cmc = self._plotting_imports()
+         t0 = time.time()
+diff --git a/5a_QRF_TARGETS.ipynb b/5a_QRF_TARGETS.ipynb
+index 1783c22..375a281 100644
+--- a/5a_QRF_TARGETS.ipynb
++++ b/5a_QRF_TARGETS.ipynb
+@@ -72,7 +72,27 @@
+     "Q50_IDX   = QUANTILES.index(0.50)\n",
+     "print(f'quantiles    : {QUANTILES}')\n",
+     "print(f'model version: {MODEL_VERSION}')\n",
+-    "print(f'targets_dir  : {targets_dir}')\n"
++    "print(f'targets_dir  : {targets_dir}')\n",
++    "\n",
++    "# \u2500\u2500 Result-map helper (shared cartography via agrid.Grid.map) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
++    "# Every stage-5 result map goes through this so they all get cartopy coastlines,\n",
++    "# a graticule and the correct polar CRS, and each writes two files into\n",
++    "# fig_dir_targets: the map and a separate colour-bar-with-histogram.\n",
++    "FIG_DIR = fig_dir_targets\n",
++    "\n",
++    "def save_target_map(grid, var, *, cmap, vmin, vmax, label, cbar_title, units,\n",
++    "                    stem=None, gridlines=(-180, 180, 30), show=True):\n",
++    "    \"\"\"Draw one grid field through agrid and save map + histogram colour-bar.\"\"\"\n",
++    "    stem = stem or f\"{label}_{var}\"\n",
++    "    fig, ax = grid.map(\n",
++    "        var, cmap=cmap, vmin=vmin, vmax=vmax,\n",
++    "        coastlines=True, gridlines=gridlines,\n",
++    "        cbar_title=cbar_title, cbar_units_label=units,\n",
++    "        ext_cbar=True, histogram=True,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        save_cbar=str(FIG_DIR / f\"{stem}_cbar{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=show, return_fig=True)\n",
++    "    return fig, ax\n"
+    ]
+   },
+   {
+@@ -385,7 +405,10 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "TARGET_GRIDS[1]['agrid'].map('qrf_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "# Greenland median heat flow (bias-corrected QRF)\n",
++    "save_target_map(TARGET_GRIDS[1]['agrid'], 'qrf_q50_corr',\n",
++    "                cmap=hf_cmap, vmin=q_min, vmax=q_max, label='grl',\n",
++    "                cbar_title='GRL \u2014 median heat flow (QRF)', units=hf_unit)\n"
+    ]
+   },
+   {
+@@ -408,7 +431,10 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "TARGET_GRIDS[0]['agrid'].map('qrf_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "# Antarctica median heat flow (bias-corrected QRF)\n",
++    "save_target_map(TARGET_GRIDS[0]['agrid'], 'qrf_q50_corr',\n",
++    "                cmap=hf_cmap, vmin=q_min, vmax=q_max, label='ant',\n",
++    "                cbar_title='ANT \u2014 median heat flow (QRF)', units=hf_unit)\n"
+    ]
+   },
+   {
+@@ -428,21 +454,11 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "\n",
+-    "\n",
+-    "fig, ax = ant_qrf.map(\n",
+-    "    'qrf_q50_corr',\n",
+-    "    cmap        = hf_cmap,\n",
+-    "    vmin        = q_min,\n",
+-    "    vmax        = q_max,\n",
+-    "    cbar        = True,\n",
+-    "    cbar_title  = 'Heat flow',\n",
+-    "    cbar_units_label = 'W/m\u00b2',\n",
+-    "    coastlines  = True,\n",
+-    "    show        = True,\n",
+-    "    return_fig  = True,\n",
+-    ")\n",
+-    "#results_qrf['grl']['qrf_q50_corr'].plot(vmin = q_min, vmax = 0.12)"
++    "# Antarctica median heat flow \u2014 same map through the shared helper.\n",
++    "fig, ax = save_target_map(TARGET_GRIDS[0]['agrid'], 'qrf_q50_corr',\n",
++    "                          cmap=hf_cmap, vmin=q_min, vmax=q_max, label='ant',\n",
++    "                          cbar_title='ANT \u2014 median heat flow (QRF)',\n",
++    "                          units=hf_unit, stem='ant_qrf_q50_corr_main')\n"
+    ]
+   },
+   {
+diff --git a/5b_GBM_TARGETS.ipynb b/5b_GBM_TARGETS.ipynb
+index b65e904..fb56dcc 100644
+--- a/5b_GBM_TARGETS.ipynb
++++ b/5b_GBM_TARGETS.ipynb
+@@ -60,7 +60,27 @@
+     "\n",
+     "print(f\"MODEL_VERSION  : {MODEL_VERSION}\")\n",
+     "print(f\"targets_dir    : {targets_dir}\")\n",
+-    "print(f\"GBM quantiles : {GBM_QUANTILES}\")\n"
++    "print(f\"GBM quantiles : {GBM_QUANTILES}\")\n",
++    "\n",
++    "# \u2500\u2500 Result-map helper (shared cartography via agrid.Grid.map) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
++    "# Every stage-5 result map goes through this so they all get cartopy coastlines,\n",
++    "# a graticule and the correct polar CRS, and each writes two files into\n",
++    "# fig_dir_targets: the map and a separate colour-bar-with-histogram.\n",
++    "FIG_DIR = fig_dir_targets\n",
++    "\n",
++    "def save_target_map(grid, var, *, cmap, vmin, vmax, label, cbar_title, units,\n",
++    "                    stem=None, gridlines=(-180, 180, 30), show=True):\n",
++    "    \"\"\"Draw one grid field through agrid and save map + histogram colour-bar.\"\"\"\n",
++    "    stem = stem or f\"{label}_{var}\"\n",
++    "    fig, ax = grid.map(\n",
++    "        var, cmap=cmap, vmin=vmin, vmax=vmax,\n",
++    "        coastlines=True, gridlines=gridlines,\n",
++    "        cbar_title=cbar_title, cbar_units_label=units,\n",
++    "        ext_cbar=True, histogram=True,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        save_cbar=str(FIG_DIR / f\"{stem}_cbar{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=show, return_fig=True)\n",
++    "    return fig, ax\n"
+    ]
+   },
+   {
+@@ -430,7 +450,10 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "TARGET_GRIDS[0]['agrid'].map('gbm_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "# Antarctica median heat flow (bias-corrected GBM)\n",
++    "save_target_map(TARGET_GRIDS[0]['agrid'], 'gbm_q50_corr',\n",
++    "                cmap=hf_cmap, vmin=q_min, vmax=q_max, label='ant',\n",
++    "                cbar_title='ANT \u2014 median heat flow (GBM)', units=hf_unit)\n"
+    ]
+   },
+   {
+diff --git a/5c_SIM_TARGETS.ipynb b/5c_SIM_TARGETS.ipynb
+index e79dffc..5431f4d 100644
+--- a/5c_SIM_TARGETS.ipynb
++++ b/5c_SIM_TARGETS.ipynb
+@@ -76,7 +76,27 @@
+     "print(f'model version : {MODEL_VERSION}')\n",
+     "print(f'targets_dir   : {targets_dir}')\n",
+     "print(f'hist n_bins   : {n_bins}  bin_width={HIST_BIN_WIDTH} W/m\u00b2')\n",
+-    "print(f'batch size    : {BATCH_SIZE:,} points')"
++    "print(f'batch size    : {BATCH_SIZE:,} points')\n",
++    "\n",
++    "# \u2500\u2500 Result-map helper (shared cartography via agrid.Grid.map) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
++    "# Every stage-5 result map goes through this so they all get cartopy coastlines,\n",
++    "# a graticule and the correct polar CRS, and each writes two files into\n",
++    "# fig_dir_targets: the map and a separate colour-bar-with-histogram.\n",
++    "FIG_DIR = fig_dir_targets\n",
++    "\n",
++    "def save_target_map(grid, var, *, cmap, vmin, vmax, label, cbar_title, units,\n",
++    "                    stem=None, gridlines=(-180, 180, 30), show=True):\n",
++    "    \"\"\"Draw one grid field through agrid and save map + histogram colour-bar.\"\"\"\n",
++    "    stem = stem or f\"{label}_{var}\"\n",
++    "    fig, ax = grid.map(\n",
++    "        var, cmap=cmap, vmin=vmin, vmax=vmax,\n",
++    "        coastlines=True, gridlines=gridlines,\n",
++    "        cbar_title=cbar_title, cbar_units_label=units,\n",
++    "        ext_cbar=True, histogram=True,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        save_cbar=str(FIG_DIR / f\"{stem}_cbar{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=show, return_fig=True)\n",
++    "    return fig, ax\n"
+    ]
+   },
+   {
+@@ -573,16 +593,22 @@
+    "source": [
+     "from lib.utils import grid_from_xr_dataset\n",
+     "\n",
+-    "# Stage-5 maps routed through agrid with config colormaps (M4/C5).\n",
+-    "var_cmaps = {'sim_q50_corr': hf_cmap, 'sim_std_corr': unc_cmap}\n",
++    "# Stage-5 similarity maps through the shared helper (config cmaps).\n",
++    "# Median heat flow uses the heat-flow scale; the per-cell std uses the\n",
++    "# uncertainty scale; sim_N (neighbour count) is a diagnostic, auto-scaled.\n",
+     "for label, ds in results_sim_ds.items():\n",
+     "    g = grid_from_xr_dataset(ds, name=label)\n",
+-    "    for var, cmap in var_cmaps.items():\n",
+-    "        if var in ds:\n",
+-    "            g.map(var, cmap=cmap, vmin=q_min, vmax=q_max)\n",
+-    "    if 'sim_N' in ds:\n",
+-    "        g.map('sim_N', cmap=unc_cmap)\n",
+-    "    print(f'[{label.upper()}] maps done.')"
++    "    if 'sim_q50_corr' in ds:\n",
++    "        save_target_map(g, 'sim_q50_corr', cmap=hf_cmap, vmin=q_min, vmax=q_max,\n",
++    "                        label=label, cbar_title=f'{label.upper()} \u2014 median heat flow (SIM)',\n",
++    "                        units=hf_unit)\n",
++    "    if 'sim_std_corr' in ds:\n",
++    "        std_mW = to_mW(ds['sim_std_corr'].values)\n",
++    "        save_target_map(g, 'sim_std_corr', cmap=unc_cmap, vmin=0.0,\n",
++    "                        vmax=float(np.nanpercentile(std_mW, VAR_PCTL_CAP)),\n",
++    "                        label=label, cbar_title=f'{label.upper()} \u2014 prediction std (SIM)',\n",
++    "                        units=unc_unit)\n",
++    "    print(f'[{label.upper()}] maps done.')\n"
+    ]
+   },
+   {
+@@ -667,7 +693,11 @@
+    "source": [
+     "results_sim['ant']['ds']\n",
+     "\n",
+-    "TARGET_GRIDS[0]['agrid'].map('sim_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "# Antarctica median heat flow (SIM)\n",
++    "save_target_map(TARGET_GRIDS[0]['agrid'], 'sim_q50_corr',\n",
++    "                cmap=hf_cmap, vmin=q_min, vmax=q_max, label='ant',\n",
++    "                cbar_title='ANT \u2014 median heat flow (SIM)', units=hf_unit,\n",
++    "                stem='ant_sim_q50_corr_main')\n"
+    ]
+   },
+   {
+@@ -687,7 +717,11 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "TARGET_GRIDS[0]['agrid'].map('sim_q50_corr', cmap = hf_cmap, vmin = q_min, vmax = q_max)"
++    "# Antarctica median heat flow (SIM) \u2014 repeat view\n",
++    "save_target_map(TARGET_GRIDS[0]['agrid'], 'sim_q50_corr',\n",
++    "                cmap=hf_cmap, vmin=q_min, vmax=q_max, label='ant',\n",
++    "                cbar_title='ANT \u2014 median heat flow (SIM)', units=hf_unit,\n",
++    "                stem='ant_sim_q50_corr_view2')\n"
+    ]
+   },
+   {
+diff --git a/6_CLUSTERING.ipynb b/6_CLUSTERING.ipynb
+index d5c6ed3..2c32f88 100644
+--- a/6_CLUSTERING.ipynb
++++ b/6_CLUSTERING.ipynb
+@@ -85,6 +85,7 @@
+     "RUN_QRF_TRAINING = True    # False -> load saved expert artefacts\n",
+     "RUN_CV           = True    # False -> load saved CV thresholds\n",
+     "RUN_GRID_APPLY   = True    # False -> reuse in-memory grid diagnostics\n",
++    "SHOW_FIGS        = True    # display result maps inline; files are always written\n",
+     "\n",
+     "# \u2500\u2500 Cluster sweep (values from config.py) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+     "NCLUSTERS_RANGE = range(NCLUSTERS_RANGE_MIN, NCLUSTERS_RANGE_MAX + 1)\n",
+@@ -800,6 +801,75 @@
+     "        print(f\"  wrote {len(new_vars)} variables to {nc_path}\")\n"
+    ]
+   },
++  {
++   "cell_type": "code",
++   "metadata": {},
++   "execution_count": null,
++   "outputs": [],
++   "source": [
++    "# \u2500\u2500 Result-map helpers (shared cartography via agrid.Grid.map) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
++    "# Every result map below goes through agrid.Grid.map() so they share one set of\n",
++    "# cartographic settings: cartopy coastlines, graticule, and the correct polar\n",
++    "# projection per region. Each continuous map writes two files into FIG_DIR \u2014 the\n",
++    "# map itself and a separate colour-bar-with-histogram \u2014 and each categorical map\n",
++    "# writes a single classified map with a legend. Continuous fields use the cmaps\n",
++    "# and ranges from config.py; categorical fields use the shared CONF_/EXPL_ and\n",
++    "# cluster colour scales, also from config.py.\n",
++    "import xarray as xr\n",
++    "from lib.utils import grid_from_xr_dataset\n",
++    "\n",
++    "def _field_to_grid(df, xcol, ycol, values, epsg, name=\"v\"):\n",
++    "    \"\"\"Pivot a flat (x, y, value) field to a (y, x) grid wrapped as an agrid.Grid.\"\"\"\n",
++    "    d = df[[xcol, ycol]].copy(); d[\"v\"] = np.asarray(values, dtype=float)\n",
++    "    p = d.pivot_table(index=ycol, columns=xcol, values=\"v\", aggfunc=\"mean\")\n",
++    "    ys = p.index.values; xs = p.columns.values          # both ascending\n",
++    "    ds = xr.Dataset({name: ([\"y\", \"x\"], p.values)},\n",
++    "                    coords={\"x\": xs, \"y\": ys}, attrs={\"epsg\": int(epsg)})\n",
++    "    return grid_from_xr_dataset(ds), name\n",
++    "\n",
++    "def result_map(df, cfg, values, *, cmap, vmin, vmax, cbar_title, units,\n",
++    "               stem, gridlines=(-180, 180, 30), show=True):\n",
++    "    \"\"\"Continuous result map + separate histogram colour-bar, both saved to FIG_DIR.\"\"\"\n",
++    "    g, name = _field_to_grid(df, cfg[\"xcol\"], cfg[\"ycol\"], values, cfg[\"epsg\"])\n",
++    "    fig, ax = g.map(\n",
++    "        name, cmap=cmap, vmin=vmin, vmax=vmax,\n",
++    "        coastlines=True, gridlines=gridlines,\n",
++    "        cbar_title=cbar_title, cbar_units_label=units,\n",
++    "        ext_cbar=True, histogram=True,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        save_cbar=str(FIG_DIR / f\"{stem}_cbar{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=show, return_fig=True)\n",
++    "    return fig, ax\n",
++    "\n",
++    "def categorical_map(df, cfg, values, *, colors, labels, stem, show=True):\n",
++    "    \"\"\"Discrete class map with a legend, saved to FIG_DIR (no histogram colour-bar).\n",
++    "\n",
++    "    agrid.map() always forwards vmin/vmax to pcolormesh, so a Normalize instance\n",
++    "    cannot be passed alongside them. Instead we map integer class k -> the k-th\n",
++    "    colour of a ListedColormap by anchoring the range to half-integer bounds\n",
++    "    (vmin=-0.5, vmax=len(labels)-0.5). Negative / catch-all cells become NaN and\n",
++    "    render transparent.\"\"\"\n",
++    "    cmap = listed_cmap(colors)\n",
++    "    vals = np.asarray(values, dtype=float).copy()\n",
++    "    vals[vals < 0] = np.nan\n",
++    "    g, name = _field_to_grid(df, cfg[\"xcol\"], cfg[\"ycol\"], vals, cfg[\"epsg\"])\n",
++    "    fig, ax = g.map(\n",
++    "        name, cmap=cmap, vmin=-0.5, vmax=len(labels) - 0.5,\n",
++    "        coastlines=True, gridlines=(-180, 180, 30),\n",
++    "        cbar=False, histogram=False,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=False, return_fig=True)\n",
++    "    ax.legend(handles=[mpatches.Patch(color=colors[i], label=labels[i])\n",
++    "                       for i in range(len(labels))],\n",
++    "              loc=\"lower left\", fontsize=7, framealpha=0.9)\n",
++    "    fig.savefig(FIG_DIR / f\"{stem}{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
++    "    if show: plt.show()\n",
++    "    else: plt.close(fig)\n",
++    "    return fig, ax\n",
++    "\n",
++    "print(\"Result-map helpers ready \u2014 maps will be written to\", FIG_DIR)\n"
++   ]
++  },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+@@ -814,65 +884,47 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": null,
+    "metadata": {},
++   "execution_count": null,
+    "outputs": [],
+    "source": [
+-    "def pivot_field(df, xcol, ycol, values):\n",
+-    "    \"\"\"Flat field -> 2-D array for imshow, with origin='upper'.\"\"\"\n",
+-    "    d = df[[xcol, ycol]].copy(); d[\"v\"] = values\n",
+-    "    p = d.pivot_table(index=ycol, columns=xcol, values=\"v\", aggfunc=\"mean\")\n",
+-    "    return p.values[::-1], p.columns.values, p.index.values[::-1]\n",
+-    "\n",
+-    "def _extent(xs, ys):\n",
+-    "    return [xs.min()*milli, xs.max()*milli, ys.min()*milli, ys.max()*milli]\n",
++    "# Figs 9-10 equivalents \u2014 every panel is now an agrid map (coastlines, graticule,\n",
++    "# polar CRS). Robustness and total variance are continuous (map + histogram cbar);\n",
++    "# confidence and explainability are categorical (classified map + legend). One\n",
++    "# file per field, per region, so nothing is baked into a fixed 2-panel layout.\n",
++    "var_total_vmax = {}   # remember the 98th-percentile variance cap per region for S1\n",
+     "\n",
+     "for domain, cfg in DOMAIN_CONFIG.items():\n",
+     "    diag = grid_diag[domain]\n",
+     "    df_tgt = pd.read_parquet(cfg[\"parquet\"])\n",
+-    "    xc, yc = cfg[\"xcol\"], cfg[\"ycol\"]\n",
+     "\n",
+-    "    # Fig 9 equivalent\n",
+-    "    fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))\n",
+-    "    fig.suptitle(f\"{domain.upper()} \u2014 robustness and total variance (MoE QRF, 25 km)\")\n",
+-    "    g, xs, ys = pivot_field(df_tgt, xc, yc, diag[\"robustness\"])\n",
+-    "    im = axes[0].imshow(g, origin=\"upper\", extent=_extent(xs, ys),\n",
+-    "                        cmap=\"cmc.batlow\", vmin=0, vmax=1, aspect=\"equal\")\n",
+-    "    plt.colorbar(im, ax=axes[0], label=\"Robustness [0-1]\", fraction=0.046, pad=0.04)\n",
+-    "    axes[0].set_title(\"(a) Robustness\"); axes[0].set_xlabel(\"x [km]\"); axes[0].set_ylabel(\"y [km]\")\n",
++    "    # (a) Robustness 1 - H_n  \u2208 [0, 1]   \u2014 continuous\n",
++    "    result_map(df_tgt, cfg, diag[\"robustness\"],\n",
++    "               cmap=robust_cmap, vmin=robust_v_min, vmax=robust_v_max,\n",
++    "               cbar_title=f\"{domain.upper()} \u2014 robustness\", units=robust_unit,\n",
++    "               stem=f\"{domain}_fig9a_robustness\", show=SHOW_FIGS)\n",
+     "\n",
++    "    # (b) Total variance  \u2014 continuous, in mW\u00b2 m\u207b\u2074\n",
+     "    var_mW2 = to_mW(to_mW(diag[\"variance_total\"]))\n",
+-    "    g, xs, ys = pivot_field(df_tgt, xc, yc, var_mW2)\n",
+-    "    im = axes[1].imshow(g, origin=\"upper\", extent=_extent(xs, ys), cmap=unc_cmap,\n",
+-    "                        vmin=0, vmax=np.nanpercentile(var_mW2, 98), aspect=\"equal\")\n",
+-    "    plt.colorbar(im, ax=axes[1], label=\"Total variance [mW\u00b2 m\u207b\u2074]\", fraction=0.046, pad=0.04)\n",
+-    "    axes[1].set_title(\"(b) Total variance\"); axes[1].set_xlabel(\"x [km]\")\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"{domain}_fig9_robustness_variance{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    plt.show()\n",
+-    "\n",
+-    "    # Fig 10 equivalent \u2014 categorical\n",
+-    "    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))\n",
+-    "    fig.suptitle(f\"{domain.upper()} \u2014 confidence and explainability (MoE QRF, 25 km)\")\n",
+-    "    for ax, key, labels, colors, title in [\n",
+-    "        (axes[0], \"confidence\",     CONF_LABELS, CONF_COLORS, \"(a) Confidence\"),\n",
+-    "        (axes[1], \"explainability\", EXPL_LABELS, EXPL_COLORS, \"(b) Explainability\"),\n",
+-    "    ]:\n",
+-    "        cmap = mcolors.ListedColormap(colors)\n",
+-    "        bounds = np.arange(-0.5, len(labels) + 0.5)\n",
+-    "        norm = mcolors.BoundaryNorm(bounds, cmap.N)\n",
+-    "        vals = diag[key].astype(float).copy()\n",
+-    "        vals[vals < 0] = np.nan\n",
+-    "        g, xs, ys = pivot_field(df_tgt, xc, yc, vals)\n",
+-    "        ax.imshow(g, origin=\"upper\", extent=_extent(xs, ys), cmap=cmap, norm=norm,\n",
+-    "                  aspect=\"equal\", interpolation=\"none\")\n",
+-    "        ax.legend(handles=[mpatches.Patch(color=colors[i], label=labels[i])\n",
+-    "                           for i in range(len(labels))], loc=\"lower left\", fontsize=7)\n",
+-    "        ax.set_title(title); ax.set_xlabel(\"x [km]\")\n",
+-    "    axes[0].set_ylabel(\"y [km]\")\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"{domain}_fig10_confidence_explain{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    plt.show()\n"
++    "    vmax = float(np.nanpercentile(var_mW2, VAR_PCTL_CAP))\n",
++    "    var_total_vmax[domain] = vmax\n",
++    "    result_map(df_tgt, cfg, var_mW2,\n",
++    "               cmap=var_cmap, vmin=0.0, vmax=vmax,\n",
++    "               cbar_title=f\"{domain.upper()} \u2014 total variance\", units=var_unit,\n",
++    "               stem=f\"{domain}_fig9b_total_variance\", show=SHOW_FIGS)\n",
++    "\n",
++    "    # (a) Confidence, 5-class scheme + Unclassified \u2014 categorical (eqs 6-10)\n",
++    "    categorical_map(df_tgt, cfg, diag[\"confidence\"],\n",
++    "                    colors=CONF_COLORS, labels=CONF_LABELS,\n",
++    "                    stem=f\"{domain}_fig10a_confidence\", show=SHOW_FIGS)\n",
++    "\n",
++    "    # (b) Explainability, aleatoric/epistemic regime + extras \u2014 categorical (eqs 11-14)\n",
++    "    categorical_map(df_tgt, cfg, diag[\"explainability\"],\n",
++    "                    colors=EXPL_COLORS, labels=EXPL_LABELS,\n",
++    "                    stem=f\"{domain}_fig10b_explainability\", show=SHOW_FIGS)\n",
++    "\n",
++    "    print(f\"{domain.upper()}: wrote robustness, total-variance, confidence and \"\n",
++    "          f\"explainability maps to {FIG_DIR}\")\n"
+    ]
+   },
+   {
+@@ -890,49 +942,40 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": null,
+    "metadata": {},
++   "execution_count": null,
+    "outputs": [],
+    "source": [
+-    "# S1 \u2014 variance decomposition maps\n",
++    "# S1 \u2014 variance decomposition maps (aleatoric vs epistemic), continuous.\n",
++    "# Same colour scale as the total-variance panel so the three are directly comparable.\n",
+     "for domain, cfg in DOMAIN_CONFIG.items():\n",
+-    "    diag = grid_diag[domain]; df_tgt = pd.read_parquet(cfg[\"parquet\"])\n",
+-    "    xc, yc = cfg[\"xcol\"], cfg[\"ycol\"]\n",
+-    "    fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))\n",
+-    "    fig.suptitle(f\"{domain.upper()} \u2014 variance decomposition (25 km)\")\n",
+-    "    for ax, key, title in zip(axes, (\"variance_aleatoric\", \"variance_epistemic\"),\n",
+-    "                              (\"(a) Aleatoric\", \"(b) Epistemic\")):\n",
++    "    diag = grid_diag[domain]\n",
++    "    df_tgt = pd.read_parquet(cfg[\"parquet\"])\n",
++    "    vmax = var_total_vmax.get(domain)   # reuse the total-variance cap from Figs 9-10\n",
++    "    for key, tag in ((\"variance_aleatoric\", \"aleatoric\"),\n",
++    "                     (\"variance_epistemic\", \"epistemic\")):\n",
+     "        v = to_mW(to_mW(diag[key]))\n",
+-    "        g, xs, ys = pivot_field(df_tgt, xc, yc, v)\n",
+-    "        im = ax.imshow(g, origin=\"upper\", extent=_extent(xs, ys), cmap=unc_cmap,\n",
+-    "                       vmin=0, vmax=np.nanpercentile(v, 98), aspect=\"equal\")\n",
+-    "        plt.colorbar(im, ax=ax, label=\"Variance [mW\u00b2 m\u207b\u2074]\", fraction=0.046, pad=0.04)\n",
+-    "        ax.set_title(title); ax.set_xlabel(\"x [km]\")\n",
+-    "    axes[0].set_ylabel(\"y [km]\")\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"S_{domain}_variance_decomp{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    plt.show()\n",
+-    "\n",
+-    "# S2 \u2014 cluster maps\n",
+-    "disc = plt.get_cmap(\"Set1\", NCLUSTERS_BEST)\n",
++    "        cap = vmax if vmax is not None else float(np.nanpercentile(v, VAR_PCTL_CAP))\n",
++    "        result_map(df_tgt, cfg, v, cmap=var_cmap, vmin=0.0, vmax=cap,\n",
++    "                   cbar_title=f\"{domain.upper()} \u2014 {tag} variance\", units=var_unit,\n",
++    "                   stem=f\"S1_{domain}_variance_{tag}\", show=SHOW_FIGS)\n",
++    "\n",
++    "# S2 \u2014 regime (cluster) maps, categorical. Colours are sampled from the shared\n",
++    "# CLUSTER_CMAP so the number of swatches always matches K.\n",
++    "_cl_cmap = plt.get_cmap(CLUSTER_CMAP)\n",
++    "CLUSTER_COLORS = [mcolors.to_hex(_cl_cmap(i / max(NCLUSTERS_BEST - 1, 1)))\n",
++    "                  for i in range(NCLUSTERS_BEST)]\n",
++    "CLUSTER_LABELS = [f\"Cluster {i}\" for i in range(NCLUSTERS_BEST)]\n",
+     "for domain, cfg in DOMAIN_CONFIG.items():\n",
+-    "    df_tgt = pd.read_parquet(cfg[\"parquet\"]); xc, yc = cfg[\"xcol\"], cfg[\"ycol\"]\n",
++    "    df_tgt = pd.read_parquet(cfg[\"parquet\"])\n",
+     "    df_lbl = pd.read_parquet(CLUSTER_DIR / f\"{domain}_cluster_labels.parquet\")\n",
+-    "    g, xs, ys = pivot_field(df_tgt, xc, yc, df_lbl[f\"cluster_n{NCLUSTERS_BEST}\"].astype(float).values)\n",
+-    "    cmap = mcolors.ListedColormap([disc(i) for i in range(NCLUSTERS_BEST)])\n",
+-    "    norm = mcolors.BoundaryNorm(np.arange(-0.5, NCLUSTERS_BEST + 0.5), cmap.N)\n",
+-    "    fig, ax = plt.subplots(figsize=(5.5, 5.5))\n",
+-    "    ax.imshow(g, origin=\"upper\", extent=_extent(xs, ys), cmap=cmap, norm=norm,\n",
+-    "              aspect=\"equal\", interpolation=\"none\")\n",
+-    "    ax.legend(handles=[mpatches.Patch(color=disc(i), label=f\"Cluster {i}\")\n",
+-    "                       for i in range(NCLUSTERS_BEST)], loc=\"lower left\", fontsize=8)\n",
+-    "    ax.set_title(f\"{domain.upper()} \u2014 regime map (K={NCLUSTERS_BEST}, 25 km)\")\n",
+-    "    ax.set_xlabel(\"x [km]\"); ax.set_ylabel(\"y [km]\")\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"S_{domain}_cluster_map{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    plt.show()\n",
++    "    labels = df_lbl[f\"cluster_n{NCLUSTERS_BEST}\"].astype(float).values\n",
++    "    categorical_map(df_tgt, cfg, labels,\n",
++    "                    colors=CLUSTER_COLORS, labels=CLUSTER_LABELS,\n",
++    "                    stem=f\"S2_{domain}_cluster_map\", show=SHOW_FIGS)\n",
+     "\n",
+-    "# S3 \u2014 baseline vs MoE uncertainty (only if CV ran this session)\n",
++    "# S3 \u2014 baseline vs MoE out-of-fold uncertainty. This is a distributional summary,\n",
++    "# not a spatial field, so it stays a plain matplotlib violin plot.\n",
+     "if oof_moe is not None:\n",
+     "    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))\n",
+     "    for ax, key, title in zip(axes, (\"aleat\", \"epist\"), (\"Aleatoric\", \"Epistemic\")):\n",
+@@ -943,8 +986,9 @@
+     "        ax.set_ylabel(\"Variance [mW\u00b2 m\u207b\u2074]\"); ax.set_title(f\"{title} (out-of-fold)\")\n",
+     "    fig.suptitle(\"Clustering effect on uncertainty (5-fold CV)\")\n",
+     "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"S_cv_uncertainty_baseline_vs_moe{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    plt.show()\n"
++    "    fig.savefig(FIG_DIR / f\"S3_cv_uncertainty_baseline_vs_moe{FIG_EXT}\",\n",
++    "                dpi=FIG_DPI, bbox_inches=\"tight\")\n",
++    "    plt.show() if SHOW_FIGS else plt.close(fig)\n"
+    ]
+   },
+   {
+diff --git a/7_ENSEMBLE.ipynb b/7_ENSEMBLE.ipynb
+index b3b66af..d75a9ef 100644
+--- a/7_ENSEMBLE.ipynb
++++ b/7_ENSEMBLE.ipynb
+@@ -79,6 +79,7 @@
+     "RUN_PICP_CHECK = True         # validate/inflate the pooled 90% band on the reference set\n",
+     "SAVE_GRIDS     = True         # write the fused NetCDF grids to output/ensemble\n",
+     "MAKE_FIGS      = True         # render the summary figures\n",
++    "SHOW_FIGS      = True         # display maps inline; files are always written\n",
+     "\n",
+     "# \u2500\u2500 Shared constants (all from config.py) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+     "METHODS      = ENSEMBLE_METHODS         # [\"qrf\", \"gbm\", \"sim\"]\n",
+@@ -992,80 +993,104 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "from matplotlib.colors import BoundaryNorm, ListedColormap\n",
+-    "\n",
+-    "def _extent(ds):\n",
+-    "    x = ds[\"x\"].values; y = ds[\"y\"].values\n",
+-    "    return [x.min(), x.max(), y.min(), y.max()]\n",
+-    "\n",
+-    "def _show(ax, ds, arr, cmap, title, vmin=None, vmax=None):\n",
+-    "    im = ax.imshow(np.asarray(arr), origin=\"upper\", extent=_extent(ds),\n",
+-    "                   cmap=cmap, vmin=vmin, vmax=vmax, aspect=\"equal\")\n",
+-    "    ax.set_title(title, fontsize=10)\n",
+-    "    ax.set_xticks([]); ax.set_yticks([])\n",
+-    "    return im\n",
+-    "\n",
+-    "def figure_prediction(key, ds):\n",
+-    "    fig, axes = plt.subplots(1, 2, figsize=(12, 5.2))\n",
+-    "    im0 = _show(axes[0], ds, to_mW(ds[\"ens_q50\"].values), hf_cmap,\n",
+-    "                \"(a) Fused median heat flow\")\n",
+-    "    fig.colorbar(im0, ax=axes[0], shrink=0.8, label=\"mW m$^{-2}$\")\n",
+-    "    im1 = _show(axes[1], ds, to_mW(ds[\"ens_band\"].values), unc_cmap,\n",
+-    "                \"(b) Pooled 90% band (semi-IQR)\")\n",
+-    "    fig.colorbar(im1, ax=axes[1], shrink=0.8, label=\"mW m$^{-2}$\")\n",
+-    "    fig.suptitle(f\"{key.upper()} \u2014 fused prediction (quantile-mixture, 25 km)\")\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"{key}_ens_prediction{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    return fig\n",
+-    "\n",
+-    "def figure_variance(key, ds):\n",
+-    "    parts = [(\"ens_var_aleatoric\", \"(a) Aleatoric\"),\n",
+-    "             (\"ens_var_epistemic\", \"(b) Epistemic (within-method)\"),\n",
+-    "             (\"ens_var_structural\",\"(c) Structural (between-method)\")]\n",
+-    "    vmax = np.nanpercentile(to_mW(to_mW(ds[\"ens_var_total\"].values)), 98)\n",
+-    "    fig, axes = plt.subplots(1, 3, figsize=(15, 5))\n",
+-    "    for ax, (var, ttl) in zip(axes, parts):\n",
+-    "        im = _show(ax, ds, to_mW(to_mW(ds[var].values)), unc_cmap, ttl, vmin=0, vmax=vmax)\n",
+-    "    fig.colorbar(im, ax=axes, shrink=0.7, label=\"variance (mW m$^{-2}$)$^2$\")\n",
+-    "    fig.suptitle(f\"{key.upper()} \u2014 variance budget (law of total variance)\")\n",
+-    "    fig.savefig(FIG_DIR / f\"{key}_ens_variance_budget{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    return fig\n",
+-    "\n",
+-    "def figure_structural(key, ds):\n",
+-    "    fig, ax = plt.subplots(figsize=(6.5, 5.5))\n",
+-    "    im = _show(ax, ds, ds[\"ens_struct_share\"].values, \"cmc.batlow\",\n",
+-    "               \"Structural share of total variance\", vmin=0, vmax=1)\n",
+-    "    fig.colorbar(im, ax=ax, shrink=0.8, label=\"$V_s / V_{total}$\")\n",
+-    "    fig.savefig(FIG_DIR / f\"{key}_ens_structural_share{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    return fig\n",
+-    "\n",
+-    "def figure_categories(key, ds):\n",
+-    "    fig, axes = plt.subplots(1, 2, figsize=(13, 5.4))\n",
+-    "    for ax, var, labels, colors, ttl in [\n",
+-    "        (axes[0], \"ens_confidence\",     CONF_LABELS, CONF_COLORS, \"(a) Confidence\"),\n",
+-    "        (axes[1], \"ens_explainability\", EXPL_LABELS, EXPL_COLORS, \"(b) Explainability\")]:\n",
+-    "        cmap = ListedColormap(colors)\n",
+-    "        norm = BoundaryNorm(np.arange(-0.5, len(labels) + 0.5), cmap.N)\n",
+-    "        arr = ds[var].values.copy()\n",
+-    "        arr[arr < 0] = np.nan                       # unset -> transparent\n",
+-    "        im = ax.imshow(arr, origin=\"upper\", extent=_extent(ds), cmap=cmap,\n",
+-    "                       norm=norm, aspect=\"equal\", interpolation=\"nearest\")\n",
+-    "        ax.set_title(ttl, fontsize=10); ax.set_xticks([]); ax.set_yticks([])\n",
+-    "        cb = fig.colorbar(im, ax=ax, shrink=0.8, ticks=range(len(labels)))\n",
+-    "        cb.ax.set_yticklabels(labels, fontsize=8)\n",
+-    "    fig.suptitle(f\"{key.upper()} \u2014 confidence and explainability (fused)\")\n",
+-    "    fig.tight_layout()\n",
+-    "    fig.savefig(FIG_DIR / f\"{key}_ens_confidence_explain{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
+-    "    return fig\n",
++    "# \u2500\u2500 Result maps through agrid.Grid.map() \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
++    "# Fields live on projected (x, y) grids; we wrap each one as an agrid.Grid using\n",
++    "# the region's EPSG (config REGION_EPSG) and draw with .map(). Continuous fields\n",
++    "# get a map + a separate colour-bar-with-histogram; categorical fields get a\n",
++    "# classified map + legend. agrid.map() forwards vmin/vmax to pcolormesh, so for\n",
++    "# the categorical maps we anchor the range to half-integer bounds instead of a\n",
++    "# Normalize instance (class k -> the k-th colour of the ListedColormap).\n",
++    "import matplotlib.patches as mpatches\n",
++    "from lib.utils import grid_from_xr_dataset\n",
++    "\n",
++    "ENS_GRIDLINES = (-180, 180, 20)   # graticule spacing for the ensemble maps\n",
++    "\n",
++    "def _grid_from_field(ds, arr2d, epsg, name=\"v\"):\n",
++    "    \"\"\"Wrap a single 2-D (y, x) field from a product dataset as an agrid.Grid.\"\"\"\n",
++    "    sub = xr.Dataset({name: ([\"y\", \"x\"], np.asarray(arr2d, dtype=float))},\n",
++    "                     coords={\"x\": ds[\"x\"].values, \"y\": ds[\"y\"].values},\n",
++    "                     attrs={\"epsg\": int(epsg)})\n",
++    "    return grid_from_xr_dataset(sub), name\n",
++    "\n",
++    "def ens_continuous(ds, epsg, arr2d, *, cmap, vmin, vmax, cbar_title, units, stem,\n",
++    "                   show=True):\n",
++    "    g, name = _grid_from_field(ds, arr2d, epsg)\n",
++    "    fig, ax = g.map(\n",
++    "        name, cmap=cmap, vmin=vmin, vmax=vmax,\n",
++    "        coastlines=True, gridlines=ENS_GRIDLINES,\n",
++    "        cbar_title=cbar_title, cbar_units_label=units,\n",
++    "        ext_cbar=True, histogram=True,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        save_cbar=str(FIG_DIR / f\"{stem}_cbar{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=show, return_fig=True)\n",
++    "    return fig, ax\n",
++    "\n",
++    "def ens_categorical(ds, epsg, arr2d, *, colors, labels, stem, show=True):\n",
++    "    vals = np.asarray(arr2d, dtype=float).copy()\n",
++    "    vals[vals < 0] = np.nan                       # unset / catch-all -> transparent\n",
++    "    g, name = _grid_from_field(ds, vals, epsg)\n",
++    "    fig, ax = g.map(\n",
++    "        name, cmap=listed_cmap(colors), vmin=-0.5, vmax=len(labels) - 0.5,\n",
++    "        coastlines=True, gridlines=ENS_GRIDLINES, cbar=False, histogram=False,\n",
++    "        save_fig=str(FIG_DIR / f\"{stem}{FIG_EXT}\"),\n",
++    "        dpi=FIG_DPI, show=False, return_fig=True)\n",
++    "    ax.legend(handles=[mpatches.Patch(color=colors[i], label=labels[i])\n",
++    "                       for i in range(len(labels))],\n",
++    "              loc=\"lower left\", fontsize=7, framealpha=0.9)\n",
++    "    fig.savefig(FIG_DIR / f\"{stem}{FIG_EXT}\", dpi=FIG_DPI, bbox_inches=\"tight\")\n",
++    "    if show: plt.show()\n",
++    "    else: plt.close(fig)\n",
++    "    return fig, ax\n",
+     "\n",
+     "if MAKE_FIGS:\n",
+     "    for key, ds in products.items():\n",
+-    "        figure_prediction(key, ds)\n",
+-    "        figure_variance(key, ds)\n",
+-    "        figure_structural(key, ds)\n",
+-    "        figure_categories(key, ds)\n",
+-    "        plt.show()\n",
+-    "    print(f\"figures written to {FIG_DIR}\")\n",
++    "        epsg = REGION_EPSG[key]\n",
++    "\n",
++    "        # Fused median heat flow \u2014 continuous, in mW/m\u00b2\n",
++    "        ens_continuous(ds, epsg, to_mW(ds[\"ens_q50\"].values),\n",
++    "                       cmap=hf_cmap, vmin=hf_v_min, vmax=hf_v_max,\n",
++    "                       cbar_title=f\"{key.upper()} \u2014 fused median heat flow\",\n",
++    "                       units=hf_unit, stem=f\"{key}_ens_q50_median\", show=SHOW_FIGS)\n",
++    "\n",
++    "        # Pooled 90% band (semi-IQR) \u2014 continuous, in mW/m\u00b2. Colour range is\n",
++    "        # data-driven (0 to the VAR_PCTL_CAP percentile) so a few large-band cells\n",
++    "        # do not wash out the map.\n",
++    "        band_mW = to_mW(ds[\"ens_band\"].values)\n",
++    "        band_vmax = float(np.nanpercentile(band_mW, VAR_PCTL_CAP))\n",
++    "        ens_continuous(ds, epsg, band_mW,\n",
++    "                       cmap=unc_cmap, vmin=0.0, vmax=band_vmax,\n",
++    "                       cbar_title=f\"{key.upper()} \u2014 pooled 90% band (semi-IQR)\",\n",
++    "                       units=unc_unit, stem=f\"{key}_ens_band\", show=SHOW_FIGS)\n",
++    "\n",
++    "        # Variance budget (law of total variance) \u2014 three continuous panels on a\n",
++    "        # shared colour cap so aleatoric / epistemic / structural are comparable.\n",
++    "        var_vmax = float(np.nanpercentile(to_mW(to_mW(ds[\"ens_var_total\"].values)),\n",
++    "                                          VAR_PCTL_CAP))\n",
++    "        for var, tag in ((\"ens_var_aleatoric\", \"aleatoric\"),\n",
++    "                         (\"ens_var_epistemic\", \"epistemic\"),\n",
++    "                         (\"ens_var_structural\", \"structural\")):\n",
++    "            ens_continuous(ds, epsg, to_mW(to_mW(ds[var].values)),\n",
++    "                           cmap=var_cmap, vmin=0.0, vmax=var_vmax,\n",
++    "                           cbar_title=f\"{key.upper()} \u2014 {tag} variance\",\n",
++    "                           units=var_unit, stem=f\"{key}_ens_var_{tag}\", show=SHOW_FIGS)\n",
++    "\n",
++    "        # Structural share of total variance \u2014 continuous, dimensionless [0, 1]\n",
++    "        ens_continuous(ds, epsg, ds[\"ens_struct_share\"].values,\n",
++    "                       cmap=robust_cmap, vmin=0.0, vmax=1.0,\n",
++    "                       cbar_title=f\"{key.upper()} \u2014 structural share (Vs / Vtotal)\",\n",
++    "                       units=\"\", stem=f\"{key}_ens_structural_share\", show=SHOW_FIGS)\n",
++    "\n",
++    "        # Confidence and explainability \u2014 categorical (5-class scheme + extras)\n",
++    "        ens_categorical(ds, epsg, ds[\"ens_confidence\"].values,\n",
++    "                        colors=CONF_COLORS, labels=CONF_LABELS,\n",
++    "                        stem=f\"{key}_ens_confidence\", show=SHOW_FIGS)\n",
++    "        ens_categorical(ds, epsg, ds[\"ens_explainability\"].values,\n",
++    "                        colors=EXPL_COLORS, labels=EXPL_LABELS,\n",
++    "                        stem=f\"{key}_ens_explainability\", show=SHOW_FIGS)\n",
++    "\n",
++    "        print(f\"{key.upper()}: wrote fused prediction, band, variance budget, \"\n",
++    "              f\"structural share, confidence and explainability maps to {FIG_DIR}\")\n",
++    "    print(f\"ensemble maps written to {FIG_DIR}\")\n",
+     "else:\n",
+     "    print(\"figures skipped (MAKE_FIGS=False)\")\n"
+    ]
