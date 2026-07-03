@@ -1,5 +1,5 @@
 {
-  "model_version": "0_5",
+  "model_version": "0_4",
   "methods": [
     "qrf",
     "gbm",
@@ -20,21 +20,21 @@
   ],
   "picp_target": 0.9,
   "picp_inflation": {
-    "ant": 1.0,
-    "grl": 1.0
+    "ant": 1.5,
+    "grl": 1.05
   },
   "structural_share_threshold": 0.5,
   "regions": {
     "ant": {
-      "grid": "output/ensemble/ant_ensemble_v0_5.nc",
+      "grid": "output/ensemble/ant_ensemble_v0_4.nc",
       "mean_ghf_mW": 56.49,
-      "mean_band_mW": 22.05,
+      "mean_band_mW": 33.07,
       "mean_struct_share": 0.086
     },
     "grl": {
-      "grid": "output/ensemble/grl_ensemble_v0_5.nc",
+      "grid": "output/ensemble/grl_ensemble_v0_4.nc",
       "mean_ghf_mW": 59.05,
-      "mean_band_mW": 20.55,
+      "mean_band_mW": 21.58,
       "mean_struct_share": 0.14
     }
   }
