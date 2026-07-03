@@ -9,7 +9,7 @@ import sys; sys.path.insert(0, str(Path('.').resolve()))
 from recipe import dd
 
 
-MODEL_VERSION = '0_4'
+MODEL_VERSION = '0_5'
 
 VERBOSE = True
 
@@ -253,7 +253,7 @@ MOE_MIN_TREE_DEPTH  = 5
 
 # ── Multi-method ensemble (7_ENSEMBLE) ──────────────────────────────────────
 # Quantile knots on which the three methods are pooled into a mixture CDF.
-# QRF emits all five; GBM emits [0.05,0.50,0.95]; SIM emits q50 +/- std.
+# QRF and GBM both emit all five (GBM q25/q75 added in v0_5); SIM emits q50 +/- std.
 ENSEMBLE_QUANTILES = [0.05, 0.25, 0.50, 0.75, 0.95]
 # How to weight the three methods when pooling: "inv_rmse" (per-region inverse
 # CV-RMSE, precision weighting) or "equal". GLS covariance weighting is offered
@@ -349,7 +349,7 @@ glacier_color       = "darkblue"
 glacier_linewidth   = 1.0
 lake_color          = "cyan"
 
-FIG_DPI      = 150
+FIG_DPI      = 300
 FIG_EXT      = ".png"
 MAP_W_REF    = 6.69;  MAP_H_REF = 3.54
 MAP_W_ANT    = 3.35;  MAP_H_ANT = 3.35

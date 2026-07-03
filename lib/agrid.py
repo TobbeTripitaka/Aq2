@@ -924,8 +924,18 @@ class Grid:
             hist_dict=None, scatter_kwargs=None, **kw):
         """Production cartographic visualisation.
 
-        pcolormesh for regular grids, scatter for irregular.
-        Accepts data=None (basemap only), str, 1D/2D array, or list of layers.
+        Automatic dispatch on the data shape:
+          * a 2-D array, or a 1-D field that reshapes onto the grid
+            (reshape_tuple / nn), is drawn as a raster with pcolormesh;
+          * a genuinely irregular 1-D field (no regular shape) is drawn as
+            a scatter of the grid's lon/lat points.
+        Accepts data=None (basemap only), str (a column name), a 1-D/2-D array,
+        or a list of layers (each layer dispatched independently).
+
+        Always returns (fig, ax) so callers can refine placement, add overlays,
+        or save afterwards; `return_fig` is accepted for backward compatibility
+        and does not change the return value. When `ax` is supplied the figure is
+        drawn into it and file-saving/external-colorbar steps are skipped.
         """
         ccrs, cfeat, plt, mpath, mticker, cmc = self._plotting_imports()
         t0 = time.time()

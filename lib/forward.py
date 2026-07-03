@@ -561,11 +561,19 @@ def save_forward_product(
     ds: xr.Dataset,
     out_path: Path,
     region: str,
-    model_version: str = "0_3",
+    model_version: Optional[str] = None,
     compression_level: int = 4,
     author: str = "Stal et al. (Aq2/Kq2)",
 ) -> None:
-    """Write the forward product to a CF-1.8 compliant NetCDF with zlib compression."""
+    """Write the forward product to a CF-1.8 compliant NetCDF with zlib compression.
+
+    model_version : optional str
+        When None (default), the version string is read from config.MODEL_VERSION
+        so there is a single source of truth. Pass an explicit string only to
+        override for a one-off export.
+    """
+    if model_version is None:
+        from config import MODEL_VERSION as model_version
     _print_step(f"Saving to {out_path}")
     ds.attrs.update({
         "Conventions":   "CF-1.8",

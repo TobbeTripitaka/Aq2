@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# similarity.py v0.2.1 — Tobias Staal 2026
+# similarity.py v0.2.2 — Tobias Staal 2026
 # tobias.staal@utas.edu.au
 # MIT License
 
@@ -21,6 +21,16 @@ w_i = K ** N_sim # (n_ref,) per-reference
 Q[i] = nansum(w_i * H_r) / nansum(w_i)
 
 Data layout used here: X (n_samples, n_feat), W_r (n_ref,) per-reference scalar weights.
+
+v0.2.2 changes:
+- similarity_predict() gains exclude_exact / exclude_tol. When exclude_exact=True
+  any reference point identical to the target point (max abs standardised-feature
+  difference <= exclude_tol) is given zero weight. This closes a leave-one-out /
+  cross-validation leakage path: previously the predict core (unlike the sweep
+  core, which already skips j==idx) had no self-exclusion, so inside sim_cv_r2 a
+  held-out test point that duplicated a training reference point could be
+  predicted from itself. Default is False so genuine disjoint target grids
+  (4c/5c) are unchanged.
 
 v0.2.1 changes:
 - SIGMA_BOUNDS: Optuna search range tightened to (0.25, 4.0) to match the
@@ -398,7 +408,9 @@ def _similarity_predict_core(X_ref: np.ndarray,
                               q_min: float,
                               q_max: float,
                               kernel_mode: int,
-                              weight_mode: int
+                              weight_mode: int,
+                              exclude_exact: bool,
+                              exclude_tol: float
                               ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Numba core for similarity prediction.
@@ -410,6 +422,16 @@ def _similarity_predict_core(X_ref: np.ndarray,
     weight_mode:
         0 -> robust shifted exponential, w = W_r * W_t * (K**S - 1)
         1 -> legacy exponential, w = K**(S * W_r * W_t)
+
+    exclude_exact:
+        When True, any reference point whose standardised feature vector is
+        identical (max abs component difference <= exclude_tol) to the target
+        point is given zero weight. This prevents leave-one-out / CV leakage
+        when the target set is a subset of (or contains duplicates of) the
+        reference set — e.g. inside sim_cv_r2 where a held-out test point may
+        coincide with a training reference point. For genuine, disjoint target
+        grids (4c/5c) leave this False so behaviour is unchanged. Mirrors the
+        j == idx self-exclusion already present in _similarity_sweep_core.
     """
     n_ref, n_feat = X_ref.shape
     n_tgt = X_tgt_flat.shape[0]
@@ -428,6 +450,7 @@ def _similarity_predict_core(X_ref: np.ndarray,
     for j in range(n_tgt):
         wt = W_t_flat[j]
         S = np.empty(n_ref, dtype=np.float32)
+        skip = np.zeros(n_ref, dtype=np.bool_)   # True -> reference i gets zero weight
         for i in range(n_ref):
             if kernel_mode == 0:
                 s = 0.0
@@ -442,11 +465,27 @@ def _similarity_predict_core(X_ref: np.ndarray,
                 s = np.exp(-0.5 * acc)
             S[i] = s
 
+            # Exact-duplicate exclusion (self-exclusion for CV / LOO).
+            # Compare on the ORIGINAL (unscaled by sigma) standardised feature
+            # vectors: max abs component difference <= exclude_tol -> same point.
+            if exclude_exact:
+                max_abs = 0.0
+                for k in range(n_feat):
+                    diff = X_tgt_flat[j, k] - X_ref[i, k]
+                    if diff < 0.0:
+                        diff = -diff
+                    if diff > max_abs:
+                        max_abs = diff
+                if max_abs <= exclude_tol:
+                    skip[i] = True
+
         Sw    = 0.0
         num   = 0.0
         N_total = 0.0
 
         for i in range(n_ref):
+            if skip[i]:
+                continue
             sim_i = S[i]
             N_total += sim_i
             if weight_mode == 0:
@@ -470,6 +509,8 @@ def _similarity_predict_core(X_ref: np.ndarray,
 
         var = 0.0
         for i in range(n_ref):
+            if skip[i]:
+                continue
             sim_i = S[i]
             if weight_mode == 0:
                 wi = W_r[i] * wt * (K ** sim_i - 1.0)
@@ -482,6 +523,8 @@ def _similarity_predict_core(X_ref: np.ndarray,
 
         if hist:
             for i in range(n_ref):
+                if skip[i]:
+                    continue
                 sim_i = S[i]
                 if weight_mode == 0:
                     wi = W_r[i] * wt * (K ** sim_i - 1.0)
@@ -518,7 +561,9 @@ def similarity_predict(X_ref: np.ndarray,
                        q_max: float = 0.15,
                        use_sigma_helper: bool = True,
                        kernel: str = "rbf",
-                       weight_mode: str = "shifted_exp"
+                       weight_mode: str = "shifted_exp",
+                       exclude_exact: bool = False,
+                       exclude_tol: float = 1e-6
                        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Similarity-based prediction on arbitrary target grids.
@@ -542,6 +587,15 @@ def similarity_predict(X_ref: np.ndarray,
              Pass train-fold sample weights here for weighted CV.
     hist, n_bins, q_min, q_max : histogram options
     use_sigma_helper : bool
+    exclude_exact : bool
+             When True, reference points identical to the target point (max abs
+             feature difference <= exclude_tol) are given zero weight. Use in
+             cross-validation / leave-one-out to stop a held-out point being
+             predicted from a duplicate of itself in the reference set. Leave
+             False (default) for genuine, disjoint target grids so behaviour is
+             unchanged. Matches the self-exclusion in similarity_sweep.
+    exclude_tol : float
+             Tolerance for the exact-duplicate test (default 1e-6).
 
     Returns
     -------
@@ -589,7 +643,8 @@ def similarity_predict(X_ref: np.ndarray,
     q_flat, sig_flat, N_flat, hist_flat = _similarity_predict_core(
         X_ref, X_tgt_flat, H_ref, W_r_flat, W_t_flat, sigma_arr,
         float(K), hist, int(n_bins), float(q_min), float(q_max),
-        kernel_mode, weight_mode_code
+        kernel_mode, weight_mode_code,
+        bool(exclude_exact), float(exclude_tol)
     )
 
     q       = q_flat.reshape(tgt_shape)
@@ -599,6 +654,10 @@ def similarity_predict(X_ref: np.ndarray,
 
     return q, std, N, hist_out
 
+# v0.2.2 notes:
+# - similarity_predict(exclude_exact=True) closes CV/LOO self-prediction leak.
+#   Enabled inside 3c_SIM_SWEEP.sim_cv_r2; left False for 4c/5c target grids.
+#
 # v0.2.1 notes:
 # - SIGMA_BOUNDS exported: (0.25, 4.0) — calibrated for StandardScaler output
 # - spatial_block_kfold() added: drop-in for KFold in 3c_SIM_SWEEP §1c
