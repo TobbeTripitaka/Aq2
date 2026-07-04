@@ -139,6 +139,11 @@ q_clip_max = 0.350   # upper clip applied in 1_Import — used as model ceiling
 deep_ocean_threshold     = -5000.0   # DEM threshold for ocean masking [m]
 ref_clustering_radius_km = (grid_spacing_m_ant / 1000) / np.sqrt(np.pi)
 
+# Upper percentile used to cap colour-bar ranges on variance / uncertainty maps
+# (clips extreme outliers so the colour scale stays informative). Used by the
+# stage-5 target maps (5a/5b/5c save_target_map).
+VAR_PCTL_CAP = 99.0
+
 # =============================================================================
 # OBSERVABLES
 # Three lists, each a strict subset of the next:
@@ -340,9 +345,24 @@ hf_unit   = "mW/m²"
 
 unc_cmap  = "cmc.batlow"
 std_cmap  = "cmc.batlow"
+robust_cmap = "cmc.batlow"
 entropy_cmap = "cmc.batlow"
 unc_unit  = std_unit = "mW/m²"
 entropy_unit = "bits"
+
+# ── Stage-6 clustering / MoE diagnostic map styling ──────────────────────────
+var_cmap    = "cmc.batlow"      # total predictive variance (sequential magnitude)
+var_unit    = "mW² m⁻⁴"
+
+robust_cmap = "cmc.bamako"      # robustness 1−Hn, [0,1], high = positive/robust
+robust_unit = "1"               # dimensionless
+
+std_unit    = "mW/m²"           # std_cmap already defined above
+
+VAR_PCTL_CAP = 99.0             # upper percentile to cap variance/uncertainty colour scales
+
+CLUSTER_CMAP = "cmc.batlowS"    # categorical/qualitative crameri map for cluster regimes
+
 
 coastline_color     = "black"
 coastline_linewidth = 0.5
@@ -383,3 +403,25 @@ if VERBOSE:
         f"obs_sweep: {len(obs_sweep)} | "
         f"obs: {len(obs)}"
     )
+
+
+# ── Stage-7 (ensemble) map styling / helpers ─────────────────────────────────
+# Region → projected EPSG code, derived from TARGET_GRIDS so it never drifts
+# from the grid definitions. NB7 indexes this as REGION_EPSG[key] (key = "ant"/"grl").
+REGION_EPSG = {g["label"]: g["epsg"] for g in TARGET_GRIDS}
+
+# Toggle for interactive display vs. save-only (NB6/NB7 both reference SHOW_FIGS).
+SHOW_FIGS = True
+MAKE_FIGS = True
+
+# Uncertainty / std colour-scale bounds (heat-flow units, mW/m²). vmax is a
+# sensible fixed ceiling; set to None to auto-cap at VAR_PCTL_CAP per map instead.
+unc_v_min = 0.0
+unc_v_max = 60.0
+std_v_min = 0.0
+std_v_max = 60.0
+
+# Entropy map bounds (bits). Normalised entropy is ~[0, log2(n_bins)]; adjust
+# if your entropy is normalised to [0,1].
+entropy_v_min = 0.0
+entropy_v_max = None      # None → per-map cap at VAR_PCTL_CAP

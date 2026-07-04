@@ -1,0 +1,114 @@
+{
+  "model_version": "0_5",
+  "NCLUSTERS_BEST": 3,
+  "coarsen_factor": 5,
+  "native_spacing_m": 5000,
+  "target_spacing_m": 25000,
+  "n_features_sel": 10,
+  "n_features_clust": 21,
+  "n_train": 30848,
+  "n_cv_folds": 5,
+  "obs_sel": [
+    "EMAG2_LOG",
+    "CRUST_RHO",
+    "LITH_RHO",
+    "REVEAL_P150",
+    "MOHO",
+    "REVEAL_S80",
+    "LAB",
+    "SEDIMENT",
+    "BOUGUER",
+    "REVEAL_VP60VS70"
+  ],
+  "cluster_cols": [
+    "MOHO",
+    "MOHO_GRAV",
+    "DEM",
+    "LAB",
+    "FREE_AIR",
+    "BOUGUER",
+    "SI",
+    "GEOID",
+    "REVEAL_S80",
+    "REVEAL_S90",
+    "REVEAL_S70",
+    "REVEAL_S100",
+    "REVEAL_VP60VS70",
+    "REVEAL_VP90VS60",
+    "REVEAL_VP50VS80",
+    "LITH_RHO",
+    "CRUST_RHO",
+    "MAG_SEIS_MOHO",
+    "SEDIMENT",
+    "CTD",
+    "EMAG2_LOG"
+  ],
+  "cv_thresholds": {
+    "b_mean_cv": 0.01374424633438189,
+    "b_excess_cv": 0.024948883766920813,
+    "b_deficit_cv": 0.008415008831787559,
+    "Rcv25": 0.280280117844217,
+    "Rcv75": 0.4997806609210272,
+    "A50_cv": 0.0004853094945696972,
+    "E50_cv": 7.269630953503527e-05
+  },
+  "cluster_diagnostics": [
+    {
+      "NCLUSTERS": 2,
+      "Inertia": 461470.6,
+      "Silhouette": 0.2702,
+      "Davies_Bouldin": 1.487,
+      "Cluster_sizes": [
+        12096,
+        18752
+      ]
+    },
+    {
+      "NCLUSTERS": 3,
+      "Inertia": 399892.3,
+      "Silhouette": 0.2504,
+      "Davies_Bouldin": 1.4707,
+      "Cluster_sizes": [
+        7819,
+        17088,
+        5941
+      ]
+    },
+    {
+      "NCLUSTERS": 4,
+      "Inertia": 346842.3,
+      "Silhouette": 0.2219,
+      "Davies_Bouldin": 1.6088,
+      "Cluster_sizes": [
+        10426,
+        7119,
+        5679,
+        7624
+      ]
+    },
+    {
+      "NCLUSTERS": 5,
+      "Inertia": 320656.4,
+      "Silhouette": 0.2153,
+      "Davies_Bouldin": 1.6,
+      "Cluster_sizes": [
+        2770,
+        7132,
+        10422,
+        6472,
+        4052
+      ]
+    }
+  ],
+  "outputs": {
+    "cluster_diagnostics_csv": "output/clustering/cluster_diagnostics.csv",
+    "cv_thresholds_json": "output/clustering/cv_thresholds.json",
+    "expert_artefacts_pkl": "output/clustering/expert_qrf_n3.pkl",
+    "ant_cluster_labels": "output/clustering/ant_cluster_labels.parquet",
+    "grl_cluster_labels": "output/clustering/grl_cluster_labels.parquet",
+    "ant_diagnostics_pkl": "output/clustering/ant_diagnostics.pkl",
+    "grl_diagnostics_pkl": "output/clustering/grl_diagnostics.pkl",
+    "ant_25km_parquet": "data/antarctica_25km.parquet",
+    "grl_25km_parquet": "data/greenland_25km.parquet"
+  }
+}
