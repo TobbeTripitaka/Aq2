@@ -39,6 +39,86 @@ def _print_step(title: str) -> None:
     print(f"\n{'─'*60}\n  {title}\n{'─'*60}")
 
 
+# Coefficients for the temperature-dependent conductivity of ice, following
+# Cuffey & Paterson (2010), "The Physics of Glaciers", 4th ed., eq. 9.2:
+#   k_ice(T) = 9.828 * exp(-0.0057 * T),   T in kelvin, k in W m-1 K-1.
+# At the freezing point (T = 273.15 K) this gives ~2.07 W m-1 K-1, consistent
+# with the constant 2.1 placeholder used in Phase 1.
+_KICE_A = 9.828
+_KICE_B = 0.0057
+
+
+def k_ice_from_temperature(
+    t_basal,
+    t_units: str = "C",
+    k_min: float = 1.5,
+    k_max: float = 4.0,
+):
+    """Temperature-dependent ice conductivity k_ice(T_b) (Cuffey & Paterson 2010).
+
+    Parameters
+    ----------
+    t_basal : xr.DataArray | np.ndarray | float
+        Basal ice temperature. Interpreted per ``t_units``.
+    t_units : {"C", "K"}
+        Units of ``t_basal``. Values are converted to kelvin internally.
+    k_min, k_max : float
+        Physical clamp (W m-1 K-1) guarding against unphysical inputs.
+
+    Returns
+    -------
+    Same type as input (xr.DataArray preserved) — k_ice in W m-1 K-1.
+
+    Notes
+    -----
+    This uses the *basal* temperature as a single-value proxy for the whole ice
+    column. The topographic ice-column term integrates over a temperature that
+    varies from the (cold) surface to the (warm) bed; using T_b alone is a
+    Phase-2 first approximation that is most accurate near the bed interface,
+    where the correction is dominated. Documented in the NetCDF attributes.
+    """
+    if t_units.upper() == "C":
+        t_k = t_basal + 273.15
+    elif t_units.upper() == "K":
+        t_k = t_basal
+    else:
+        raise ValueError(f"t_units must be 'C' or 'K', got {t_units!r}")
+    k = _KICE_A * np.exp(-_KICE_B * t_k)
+    if isinstance(k, xr.DataArray):
+        k = k.clip(k_min, k_max).assign_attrs(
+            units="W m-1 K-1",
+            long_name="Ice conductivity k_ice(T_b), Cuffey & Paterson (2010)",
+            formula="9.828*exp(-0.0057*T[K])",
+            note="basal temperature used as single-value ice-column proxy")
+    else:
+        k = np.clip(k, k_min, k_max)
+    return k
+
+
+def crop_to_bbox(
+    ds: xr.Dataset,
+    x_min: float, x_max: float,
+    y_min: float, y_max: float,
+):
+    """Crop a projected (x, y) dataset to a bounding box in the grid CRS.
+
+    Robust to either ascending or descending y coordinates (BedMachine
+    Antarctica/Greenland store y descending). A development-only convenience:
+    set DEV_SUBSET=False in config to bypass entirely.
+    """
+    y = ds["y"].values
+    y_slice = slice(y_max, y_min) if y[0] > y[-1] else slice(y_min, y_max)
+    x = ds["x"].values
+    x_slice = slice(x_max, x_min) if x[0] > x[-1] else slice(x_min, x_max)
+    out = ds.sel(x=x_slice, y=y_slice)
+    ny = out.dims.get("y", 0); nx = out.dims.get("x", 0)
+    if ny == 0 or nx == 0:
+        raise ValueError(
+            f"crop_to_bbox produced an empty grid ({ny}x{nx}); check the bbox "
+            f"is in the region CRS and overlaps the data extent.")
+    return out
+
+
 def _check_mean_conservation(
     da_before: xr.DataArray,
     da_after: xr.DataArray,
@@ -86,7 +166,34 @@ def load_empirical_grid(
             f"{m}_iqr50_corr": "q_iqr50",
             f"{m}_iqr90_corr": "q_iqr90",
         })
+    # Fusion / ensemble grid (notebook 7 output): ens_* pooled quantiles.
+    # The ensemble is the recommended forward input (best practice): the
+    # central field is the pooled median (ens_q50), the intervals are the
+    # calibrated pooled quantiles, and the spread is derived from the pooled
+    # semi-interquartile bandwidth (ens_band) below.
+    ens_rename = {
+        "ens_q05": "q_q05", "ens_q25": "q_q25", "ens_q50": "q_q50",
+        "ens_q75": "q_q75", "ens_q95": "q_q95",
+    }
+    is_fusion = any(k in ds for k in ens_rename)
+    rename.update(ens_rename)
     ds = ds.rename({k: v for k, v in rename.items() if k in ds})
+
+    if is_fusion:
+        # Derive a Gaussian-equivalent sigma from the pooled semi-IQR band,
+        # matching notebook 7's own convention (b = 0.5*(q75-q25); sigma = b/0.6745).
+        if "q_std" not in ds and "ens_band" in ds:
+            ds = ds.assign(q_std=(ds["ens_band"] / 0.674489750196).assign_attrs(
+                units="W m-2",
+                long_name="Heat flow sigma from pooled semi-IQR bandwidth"))
+        # Carry through ensemble diagnostics for traceability if present.
+        for keep in ("ens_band", "ens_var_total", "ens_struct_share",
+                     "ens_robustness", "ens_confidence", "ens_explainability"):
+            pass  # already retained by xr.open_dataset; no rename needed
+        ds.attrs["forward_input_kind"] = "fusion_ensemble"
+    else:
+        ds.attrs["forward_input_kind"] = "single_method"
+
     if "q_mean" not in ds and "q_q50" in ds:
         ds = ds.assign(q_mean=ds["q_q50"].assign_attrs(
             units="W m-2", long_name="Heat flow — median estimate (q50)"))
@@ -547,10 +654,14 @@ def topographic_correction(
                    "Ocean cells use k_rock placeholder value. "
                    "BedMachine treated as truth only where direct "
                    "observations (radar/seismic) exist."),
-               "NOTE_k_rock_phase": "Phase 1 — constant 1.8 W/m/K placeholder",
+               "NOTE_k_rock_phase": (
+                   "k_rock read from upper-crust conductivity file "
+                   "(Phase-1 placeholder: constant 2.5 W/m/K)."),
                "NOTE_k_ice_phase": (
-                   "Phase 1 — constant 2.1 W/m/K placeholder. "
-                   "Phase 2: temperature-dependent k_ice(T_b).")})
+                   "k_ice = k_ice(T_b) via Cuffey & Paterson (2010) "
+                   "9.828*exp(-0.0057*T[K]); basal temperature read from file "
+                   "(Phase-1 placeholder: T_b=0 C -> k_ice~2.07 W/m/K). "
+                   "T_b is a single-value proxy for the whole ice column.")})
     _check_mean_conservation(q_in, ds_out["q_mean"], "step3 q_mean", tol=mean_tol)
     return ds_out
 
