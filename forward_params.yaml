@@ -68,15 +68,17 @@ topo_correction:
   r_m:        5000.0    # relief scale radius [m]
   k_ref:      2.5       # reference thermal conductivity [W m-1 K-1]
 
-  # Phase 1 placeholders (spatially constant)
-  # Phase 2: replace with paths to spatially varying 2-D NetCDF arrays
-  k_rock_default:  1.8    # [W m-1 K-1] -- geology-dependent in Phase 2
-  k_ice_default:   2.1    # [W m-1 K-1] -- temperature-dependent in Phase 2
+  # NOTE (v0_5): k_rock and k_ice are now READ FROM per-region input files
+  # (config.FORWARD_K_CRUST_NC / FORWARD_BASAL_TEMP_NC) rather than these
+  # constants. k_ice is derived from basal temperature via k_ice(T_b)
+  # (Cuffey & Paterson 2010). The two *_default values below are retained only
+  # as documentation / emergency fallbacks and are NOT used by 8_FORWARD.ipynb.
+  k_rock_default:  1.8    # [W m-1 K-1] -- legacy fallback (unused in v0_5)
+  k_ice_default:   2.1    # [W m-1 K-1] -- legacy fallback (unused in v0_5)
   k_ocean:         6.0    # placeholder for ocean / sub-ocean cells
 
-  # Phase 2 paths (uncomment when data available)
-  # k_rock_nc:  data/k_rock_geology.nc
-  # k_ice_nc:   data/k_ice_basal_temp.nc
+  # Phase 2 real-field paths are set in config.py (FORWARD_*_NC dicts);
+  # Phase-1 placeholder files are built by scripts/make_forward_placeholders.py.
 
   clip_max_Wm2:   1.0     # hard clip on |DeltaG_total| [W m-2]; review after run
   apply_only_where_bedmachine_direct: true
@@ -94,8 +96,10 @@ output:
   compression_level: 4      # zlib 1-9
   temp_dir:   ./temp
   final_dir:  ./output
-  ant_forward_nc:   ant_forward_v0_3.nc
-  grl_forward_nc:   grl_forward_v0_3.nc
+  # NOTE (v0_5): filenames bumped from v0_3 -> v0_5 to match config.MODEL_VERSION.
+  # The dev-subset run additionally tags these with config.DEV_SUBSET_TAG.
+  ant_forward_nc:   ant_forward_v0_5.nc
+  grl_forward_nc:   grl_forward_v0_5.nc
   cache_step1_ant:  ant_step1_oversample.nc
   cache_step2_ant:  ant_step2_volcanic.nc
   cache_step1_grl:  grl_step1_oversample.nc
