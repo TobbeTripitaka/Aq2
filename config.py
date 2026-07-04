@@ -24,6 +24,7 @@ sweep_dir    = output_root / "sweeps"
 model_dir    = output_root / "models"
 targets_dir  = output_root / "targets"
 fig_dir_obs  = Path("fig/observables")
+fig_dir_targets = fig_root / "5_TARGETS"
 
 for _p in [output_root, local_data, fig_root, local_temp, log_dir,
            sweep_dir, model_dir, targets_dir, fig_dir_obs]:

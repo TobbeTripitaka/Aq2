@@ -1,0 +1,25 @@
+{
+  "model": "QRF",
+  "sweep_notebook": "3a_QRF_SWEEP",
+  "best_r2_cal": 0.4947848411796686,
+  "n_estimators": 1000,
+  "max_depth": 50,
+  "min_samples_leaf": 5,
+  "max_features": 0.7,
+  "use_log_target": false,
+  "q_clip_max": 0.2,
+  "cal_frac": 0.1,
+  "obs_sel": [
+    "EMAG2_LOG",
+    "CRUST_RHO",
+    "LITH_RHO",
+    "REVEAL_P150",
+    "MOHO",
+    "REVEAL_S80",
+    "LAB",
+    "SEDIMENT",
+    "BOUGUER",
+    "REVEAL_VP60VS70"
+  ],
+  "n_sweep_runs": 200
+}
