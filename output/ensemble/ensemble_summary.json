@@ -1,0 +1,41 @@
+{
+  "model_version": "0_5",
+  "methods": [
+    "qrf",
+    "gbm",
+    "sim"
+  ],
+  "weight_mode": "inv_rmse",
+  "weights": {
+    "qrf": 0.32935898816112064,
+    "gbm": 0.34023381518146656,
+    "sim": 0.3304071966574127
+  },
+  "quantiles": [
+    0.05,
+    0.25,
+    0.5,
+    0.75,
+    0.95
+  ],
+  "picp_target": 0.9,
+  "picp_inflation": {
+    "ant": 1.75,
+    "grl": 1.1
+  },
+  "structural_share_threshold": 0.5,
+  "regions": {
+    "ant": {
+      "grid": "output/ensemble/ant_ensemble_v0_5.nc",
+      "mean_ghf_mW": 52.83,
+      "mean_band_mW": 37.52,
+      "mean_struct_share": 0.057
+    },
+    "grl": {
+      "grid": "output/ensemble/grl_ensemble_v0_5.nc",
+      "mean_ghf_mW": 56.95,
+      "mean_band_mW": 23.38,
+      "mean_struct_share": 0.068
+    }
+  }
+}
