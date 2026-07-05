@@ -19,7 +19,12 @@
     "LAB",
     "SEDIMENT",
     "BOUGUER",
-    "REVEAL_VP60VS70"
+    "REVEAL_VP60VS70",
+    "CTD",
+    "REVEAL_S70",
+    "REVEAL_VP50VS80",
+    "GEOID",
+    "MOHO_GRAV"
   ],
   "n_sweep_runs": 200
 }
