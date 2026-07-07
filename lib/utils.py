@@ -135,7 +135,7 @@ def scatter_residuals_fig(rows, suptitle, savepath, q_min, q_max, fig_dpi=150):
 
 import pyproj
 import xarray as xr
-from lib.agrid import Grid  # adjust import to your package
+from lib.agrid import Grid
 
 
 def grid_from_xr_dataset(ds: xr.Dataset, name: str = "Grid", **kwargs) -> Grid:

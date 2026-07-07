@@ -484,7 +484,6 @@ unc_v_max = 60.0
 std_v_min = 0.0
 std_v_max = 60.0
 
-# Entropy map bounds (bits). Normalised entropy is ~[0, log2(n_bins)]; adjust
-# if your entropy is normalised to [0,1].
+# Entropy map bounds (bits). Normalised entropy is ~[0, log2(n_bins)]
 entropy_v_min = 0.0
 entropy_v_max = None      # None → per-map cap at VAR_PCTL_CAP
