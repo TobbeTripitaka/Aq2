@@ -469,7 +469,7 @@ if VERBOSE:
 
 
 # ── Stage-7 (ensemble) map styling / helpers ─────────────────────────────────
-# Region → projected EPSG code, derived from TARGET_GRIDS so it never drifts
+# Region → projected EPSG code, derived frm TARGET_GRIDS so it never drifts
 # from the grid definitions. NB7 indexes this as REGION_EPSG[key] (key = "ant"/"grl").
 REGION_EPSG = {g["label"]: g["epsg"] for g in TARGET_GRIDS}
 

@@ -349,6 +349,7 @@ dd = [
  "usecols":[0,1,2], "names":["lon","lat","depth"], "header":1,
  "z_preproc": lambda d: -d*1000.0, "interpol_method":"linear",
  "unit":"metre", "v_range":(-52_000,-2_000), "cmap":"cmc.bamako",
+ "reference":"gard2021",
  "description":"Curie temperature depth"},
 
 # ── EMAG2 ──────────────────────────────────────────────────────────
@@ -357,6 +358,7 @@ dd = [
  "import_type":"read_raster",
  "z_preproc": lambda m: np.clip(np.sign(m)*np.log(1+np.abs(m)/300), -1, 1),
  "unit":"dimensionless", "v_range":(-1,1), "cmap":"cmc.bilbao_r",
+ "reference":"meyer2016",
  "description":"EMAG2 magnetic anomaly (log-scaled, zero-centred)"},
 
 # ── Gravity & Geoid ────────────────────────────────────────────────
@@ -366,6 +368,7 @@ dd = [
  "usecols":[0,1,2], "names":["lon","lat","gal"], "header":34,
  "z_preproc": lambda g: g*0.001, "interpol_method":"linear",
  "unit":"mGal", "v_range":(-0.11,0.09), "cmap":"cmc.broc",
+ "reference": "forste2015",
  "description":"Free-air gravity anomaly (EIGEN-6C4)"},
 
 {"label":"BOUGUER",
@@ -400,6 +403,7 @@ dd = [
    "x_col":"longitude", "y_col":"latitude", "data_col":"vsv",
    "depth":depth, "interpol_method":"linear",
    "unit":"km/s", "v_range":vr, "cmap":"cmc.roma",
+   "reference":"thrastarson2024",
    "description":f"Vsv at {depth} km (REVEAL)"}
   for depth,vr in [
       (60,  (3.8, 4.8)),
@@ -518,6 +522,7 @@ dd = [
  "func": lambda s,d: np.where(s.df["REVEAL_S70"].values==0, np.nan,
                                s.df["REVEAL_P60"].values/s.df["REVEAL_S70"].values),
  "depends_on":["REVEAL_P60","REVEAL_S70"],
+ "reference":"thrastarson2024",
  "unit":"dimensionless", "v_range":(1.6,2.1), "cmap":"cmc.batlow",
  "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 40-50 km"},
 
@@ -525,6 +530,7 @@ dd = [
  "func": lambda s,d: np.where(s.df["REVEAL_S60"].values==0, np.nan,
                                s.df["REVEAL_P90"].values/s.df["REVEAL_S60"].values),
  "depends_on":["REVEAL_P90","REVEAL_S60"],
+ "reference":"thrastarson2024",
  "unit":"dimensionless", "v_range":(1.7,2.0), "cmap":"cmc.batlow",
  "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 120-140 km"},
 
@@ -534,6 +540,7 @@ dd = [
  "func": lambda s,d: np.where(s.df["REVEAL_S80"].values==0, np.nan,
                                s.df["REVEAL_P50"].values/s.df["REVEAL_S80"].values),
  "depends_on":["REVEAL_P50","REVEAL_S80"],
+ "reference":"thrastarson2024",
  "unit":"dimensionless", "v_range":(1.7,2.2), "cmap":"cmc.batlow",
  "sigma":0.08, "weight":1.0, "description":"Vp/Vs at 120-140 km"},
 

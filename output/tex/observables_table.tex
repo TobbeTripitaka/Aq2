@@ -1,0 +1,33 @@
+\begin{tabular}{p{3cm} p{6.3cm} C{0.5cm} C{0.5cm} C{0.5cm} C{0.5cm} p{3.5cm}}
+
+    Label & Description & GBM & QRF & SIM & F. & \\
+    \midrule
+    MOHO\_GRAV & Moho depth (GEMMA gravity-derived) & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{GEMMA} \\
+    MOHO & Moho depth (Szwillus et al. 2019) & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{Szwillus2019} \\
+    DEM & ETOPO1 DEM (reference grid) & \boolFalse & \boolFalse & \boolTrue & \boolFalse & \citet{ETOPO1} \\
+    DEM & Antarctic DEM: bed topo + isostatic adjustment & \boolFalse & \boolFalse & \boolTrue & \boolTrue &  \\
+    DEM & Greenland DEM: bed topo + Paxman isostatic adjustment & \boolFalse & \boolFalse & \boolTrue & \boolTrue &  \\
+    LAB & LAB depth (LithoRef18) & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{Afonso2019} \\
+    CTD & Curie temperature depth & \boolFalse & \boolTrue & \boolTrue & \boolFalse & \citet{gard2021} \\
+    EMAG2\_LOG & EMAG2 magnetic anomaly (log-scaled, zero-centred) & \boolFalse & \boolTrue & \boolTrue & \boolFalse &  \\
+    FREE\_AIR & Free-air gravity anomaly (EIGEN-6C4) & \boolTrue & \boolFalse & \boolTrue & \boolFalse & \citet{forste2015} \\
+    BOUGUER & Bouguer gravity anomaly (EIGEN-6C4) & \boolTrue & \boolTrue & \boolTrue & \boolFalse &  \\
+    SI & GOCE gravity shape index & \boolTrue & \boolFalse & \boolTrue & \boolFalse &  \\
+    GEOID & Geoid height (EIGEN-6C4) & \boolTrue & \boolTrue & \boolTrue & \boolFalse &  \\
+    REVEAL\_S70 & Vsv at 70 km (REVEAL) & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    REVEAL\_S80 & Vsv at 80 km (REVEAL) & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    REVEAL\_S90 & Vsv at 90 km (REVEAL) & \boolFalse & \boolFalse & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    REVEAL\_S100 & Vsv at 100 km (REVEAL) & \boolTrue & \boolFalse & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    REVEAL\_P150 & Vpv at 150 km (REVEAL) & \boolFalse & \boolTrue & \boolTrue & \boolFalse &  \\
+    LITH\_RHO & Lithospheric mantle density (LithoRef18) & \boolFalse & \boolTrue & \boolTrue & \boolFalse & \citet{Afonso2019} \\
+    CRUST\_RHO & Crustal density (LithoRef18) & \boolFalse & \boolTrue & \boolTrue & \boolFalse & \citet{Afonso2019} \\
+    SEDIMENT & Sediment thickness from gravity (GST1) & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{bird2026} \\
+    SEDIMENT & Sediment thickness, likelihood-masked + smoothed & \boolTrue & \boolTrue & \boolTrue & \boolFalse &  \\
+    MAG\_SEIS\_MOHO & Seismic Moho minus Curie depth & \boolTrue & \boolFalse & \boolTrue & \boolFalse &  \\
+    REVEAL\_VP60VS70 & Vp/Vs at 40-50 km & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    REVEAL\_VP90VS60 & Vp/Vs at 120-140 km & \boolFalse & \boolFalse & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    REVEAL\_VP50VS80 & Vp/Vs at 120-140 km & \boolTrue & \boolTrue & \boolTrue & \boolFalse & \citet{thrastarson2024} \\
+    VOLCANOES & Point observation (Aq2 only) & \boolFalse & \boolFalse & \boolFalse & \boolTrue & \citet{GVP} \\
+    HYDROTHERMAL & Point observation (Kq2 only) & \boolFalse & \boolFalse & \boolFalse & \boolTrue & \citet{GVP} \\
+    \bottomrule
+\end{tabular}
