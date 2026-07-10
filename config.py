@@ -133,7 +133,7 @@ TARGET_GRIDS = [
 # ── Heat-flow thresholds [W/m²] ───────────────────────────────────────────────
 q_min     = 0.0      # 'normal' lower for statistics and plots
 q_clip_min = 0.001   # hard minimum
-q_max     = 0.140    # 'normal' upper for statistics and plots
+q_max     = 0.160    # 'normal' upper for statistics and plots
 q_clip_max = 0.350   # upper clip applied in 1_Import — used as model ceiling
 
 deep_ocean_threshold     = -5000.0   # DEM threshold for ocean masking [m]
@@ -435,6 +435,7 @@ lake_color          = "cyan"
 
 FIG_DPI      = 300
 FIG_EXT      = ".png"
+FIG_W           = 6.7
 MAP_W_REF    = 6.69;  MAP_H_REF = 3.54
 MAP_W_ANT    = 3.35;  MAP_H_ANT = 3.35
 MAP_W_GRL    = 1.38;  MAP_H_GRL = 3.35
@@ -443,6 +444,8 @@ CBAR_W       = 2.00;  CBAR_H    = 0.55
 HEXBIN_GRIDSIZE = 55
 LOESS_FRAC   = 0.25
 LOESS_N_EVAL = 200
+
+
 
 FIG_OBS_DIR      = Path("fig/observables")
 TEMPLATE_PATH    = FIG_OBS_DIR / "obs_template.tikz"

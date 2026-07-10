@@ -7,6 +7,7 @@
 #
 # Description:
 #   Run from the project root.
+# This lines up all teh figures needed for the paper. 
 #
 set -uo pipefail
 
@@ -37,6 +38,7 @@ safe_copy() {
 mkdir -p -- "${FIG_DIR}" "${TEX_DIR}"
 
 # --- Copy/rename figures -------------------------------------------------
+safe_copy "fig/IHFC_q_map.png"                                "${FIG_DIR}/fig1a.pdf"
 safe_copy "fig/IHFC_q_distribution_cleaning_steps.pdf"        "${FIG_DIR}/fig2a.pdf"
 safe_copy "fig/IHFC_map.pdf"                                  "${FIG_DIR}/fig2b.pdf"
 safe_copy "fig/5_TARGETS/ant_gbm_q50_corr_contour.png"        "${FIG_DIR}/fig3a.png"
